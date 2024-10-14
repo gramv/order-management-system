@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<h2>Add Single Product</h2>
+<form method="POST">
+    {{ form.hidden_tag() }}
+    <div class="form-group">
+        {{ form.product_id.label }}
+        {{ form.product_id(class="form-control") }}
+    </div>
+    <div class="form-group">
+        {{ form.name.label }}
+        {{ form.name(class="form-control") }}
+    </div>
+    <div class="form-group">
+        {{ form.size.label }}
+        {{ form.size(class="form-control") }}
+    </div>
+    <div class="form-group">
+        {{ form.price.label }}
+        {{ form.price(class="form-control") }}
+    </div>
+    <div class="form-group">
+        {{ form.wholesaler.label }}
+        {{ form.wholesaler(class="form-control") }}
+    </div>
+    {{ form.submit(class="btn btn-primary") }}
+</form>
+
+<h2>Bulk Upload Products</h2>
+<form method="POST" enctype="multipart/form-data">
+    {{ bulk_form.hidden_tag() }}
+    <div class="form-group">
+        {{ bulk_form.file.label }}
+        {{ bulk_form.file(class="form-control-file") }}
+    </div>
+    {{ bulk_form.submit(class="btn btn-primary") }}
+</form>
+
+<div class="mt-4">
+    <h3>Excel File Format</h3>
+    <p>Your Excel file should have the following columns:</p>
+    <ul>
+        <li>product_id</li>
+        <li>name</li>
+        <li>size</li>
+        <li>price</li>
+        <li>wholesaler_id</li>
+    </ul>
+</div>
+{% endblock %}
