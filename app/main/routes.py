@@ -25,6 +25,8 @@ import pandas as pd
 from app.main.forms import ProductForm, BulkUploadForm
 from sqlalchemy import func
 from datetime import datetime, timedelta
+from app.models import CustomerOrder, CustomerOrderItem
+from app.main.forms import CustomerOrderForm, CustomerOrderItemForm
 
 
 @bp.route('/')
@@ -382,11 +384,7 @@ def delete_wholesaler(id):
 
 
 
-@bp.route('/search_products')
-def search_products():
-    query = request.args.get('query', '')
-    products = Product.query.filter(Product.name.ilike(f'%{query}%')).limit(10).all()
-    return jsonify([{'id': p.id, 'name': p.name} for p in products])
+
 
 @bp.route('/create_order_list', methods=['GET', 'POST'])
 @login_required
@@ -687,3 +685,85 @@ def get_avg_order_value(start_date, end_date):
     )).\
     filter(OrderList.date.between(start_date, end_date)).\
     scalar() or 0
+
+@bp.route('/customer_orders')
+@login_required
+def customer_orders():
+    orders = CustomerOrder.query.order_by(CustomerOrder.order_date.desc()).all()
+    return render_template('customer_orders.html', orders=orders)
+
+@bp.route('/create_customer_order', methods=['GET', 'POST'])
+@login_required
+def create_customer_order():
+    form = CustomerOrderForm()
+    if form.validate_on_submit():
+        order = CustomerOrder(
+            customer_name=form.customer_name.data,
+            customer_contact=form.customer_contact.data,
+            is_paid=form.is_paid.data
+        )
+        db.session.add(order)
+        db.session.commit()
+        flash('Customer order created successfully.')
+        return redirect(url_for('main.add_customer_order_item', order_id=order.id))
+    return render_template('create_customer_order.html', form=form)
+
+
+
+@bp.route('/add_new_product/<int:order_id>/<string:product_name>', methods=['GET', 'POST'])
+@login_required
+def add_new_product(order_id, product_name):
+    form = ProductForm()
+    form.wholesaler.choices = [(w.id, w.name) for w in Wholesaler.query.all()]
+    if form.validate_on_submit():
+        product = Product(
+            product_id=form.product_id.data,
+            name=form.name.data,
+            size=form.size.data,
+            price=form.price.data,
+            wholesaler_id=form.wholesaler.data
+        )
+        db.session.add(product)
+        db.session.commit()
+        flash('New product added successfully.', 'success')
+        return redirect(url_for('main.add_customer_order_item', order_id=order_id))
+    form.name.data = product_name  # Pre-fill the product name
+    return render_template('add_new_product.html', form=form, title="Add New Product")
+
+@bp.route('/view_customer_order/<int:order_id>')
+@login_required
+def view_customer_order(order_id):
+    order = CustomerOrder.query.get_or_404(order_id)
+    return render_template('view_customer_order.html', order=order)
+
+@bp.route('/search_products')
+@login_required
+def search_products():
+    query = request.args.get('query', '')
+    products = Product.query.filter(Product.name.ilike(f'%{query}%')).limit(10).all()
+    return jsonify([{'id': p.id, 'name': p.name, 'price': p.price} for p in products])
+
+@bp.route('/add_customer_order_item/<int:order_id>', methods=['GET', 'POST'])
+@login_required
+def add_customer_order_item(order_id):
+    order = CustomerOrder.query.get_or_404(order_id)
+    form = CustomerOrderItemForm()
+
+    if form.validate_on_submit():
+        product = Product.query.filter(Product.name.ilike(f"%{form.product_name.data}%")).first()
+        
+        if product:
+            item = CustomerOrderItem(
+                customer_order_id=order.id,
+                product_id=product.id,
+                quantity=form.quantity.data
+            )
+            db.session.add(item)
+            order.total_amount += product.price * form.quantity.data
+            db.session.commit()
+            flash('Item added to the order.', 'success')
+        else:
+            flash('Product not found. Please add it to the database.', 'warning')
+            return redirect(url_for('main.add_new_product', order_id=order.id, product_name=form.product_name.data))
+    
+    return render_template('main/add_customer_order_item.html', form=form, order=order)

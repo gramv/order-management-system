@@ -11,6 +11,7 @@
 <table class="table">
     <thead>
         <tr>
+            <th>Product ID</th>
             <th>Product</th>
             <th>Quantity</th>
             <th>Actions</th>
@@ -19,6 +20,7 @@
     <tbody>
         {% for item in order.items %}
         <tr>
+            <td>{{ item.product.product_id }}</td>
             <td>{{ item.product.name }}</td>
             <td>{{ item.quantity }}</td>
             <td>

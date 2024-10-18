@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Customer Order #{{ order.id }}</h1>
+    <p><strong>Customer Name:</strong> {{ order.customer_name }}</p>
+    <p><strong>Customer Contact:</strong> {{ order.customer_contact }}</p>
+    <p><strong>Order Date:</strong> {{ order.order_date.strftime('%Y-%m-%d %H:%M') }}</p>
+    <p><strong>Paid:</strong> {{ "Yes" if order.is_paid else "No" }}</p>
+    <h2>Order Items</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Price</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items %}
+                <tr>
+                    <td>{{ item.product.name }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>${{ "%.2f"|format(item.product.price * item.quantity) }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p><strong>Total Amount:</strong> ${{ "%.2f"|format(order.total_amount) }}</p>
+    <a href="{{ url_for('main.customer_orders') }}" class="btn btn-primary">Back to Orders</a>
+{% endblock %}

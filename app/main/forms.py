@@ -38,3 +38,14 @@ class BulkUploadForm(FlaskForm):
         DataRequired()
     ])
     submit = SubmitField('Upload Products')
+
+class CustomerOrderForm(FlaskForm):
+    customer_name = StringField('Customer Name', validators=[DataRequired()])
+    customer_contact = StringField('Customer Contact', validators=[DataRequired()])
+    is_paid = BooleanField('Paid')
+    submit = SubmitField('Create Order')
+
+class CustomerOrderItemForm(FlaskForm):
+    product_name = StringField('Product Name', validators=[DataRequired()])
+    quantity = IntegerField('Quantity', validators=[DataRequired()])
+    submit = SubmitField('Add Item')
