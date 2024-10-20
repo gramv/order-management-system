@@ -107,6 +107,6 @@ Contributions to the Order Management System are welcome. Please follow these st
 Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Contact
-Your Name - vgoutamram@gmail.com
+vgoutamram@gmail.com
 
 Project Link: https://github.com/gramv/order-management-system
