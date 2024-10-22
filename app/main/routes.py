@@ -686,12 +686,48 @@ def get_avg_order_value(start_date, end_date):
     filter(OrderList.date.between(start_date, end_date)).\
     scalar() or 0
 
+# In app/main/routes.py
+
+
 @bp.route('/customer_orders')
 @login_required
 def customer_orders():
-    orders = CustomerOrder.query.order_by(CustomerOrder.order_date.desc()).all()
-    return render_template('customer_orders.html', orders=orders)
+    try:
+        # Get filter parameters from request
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        status = request.args.get('status')
 
+        # Base query
+        query = CustomerOrder.query
+
+        # Apply filters
+        if start_date:
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+            query = query.filter(CustomerOrder.order_date >= start_date_obj)
+        
+        if end_date:
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+            # Add a day to include the entire end date
+            query = query.filter(CustomerOrder.order_date <= end_date_obj)
+        
+        if status:
+            query = query.filter(CustomerOrder.status == status)
+
+        # Order by latest first
+        orders = query.order_by(CustomerOrder.order_date.desc()).all()
+
+        return render_template('customer_orders.html',
+                            orders=orders,
+                            start_date=start_date,
+                            end_date=end_date,
+                            status=status)
+
+    except ValueError as e:
+        flash('Invalid date format. Please use YYYY-MM-DD format.', 'error')
+        return redirect(url_for('main.customer_orders'))
+    
+    
 @bp.route('/create_customer_order', methods=['GET', 'POST'])
 @login_required
 def create_customer_order():
@@ -700,7 +736,8 @@ def create_customer_order():
         order = CustomerOrder(
             customer_name=form.customer_name.data,
             customer_contact=form.customer_contact.data,
-            is_paid=form.is_paid.data
+            is_paid=form.is_paid.data,
+            status=form.status.data
         )
         db.session.add(order)
         db.session.commit()
@@ -708,33 +745,79 @@ def create_customer_order():
         return redirect(url_for('main.add_customer_order_item', order_id=order.id))
     return render_template('create_customer_order.html', form=form)
 
-
-
-@bp.route('/add_new_product/<int:order_id>/<string:product_name>', methods=['GET', 'POST'])
+@bp.route('/edit_customer_order/<int:order_id>', methods=['GET', 'POST'])
 @login_required
-def add_new_product(order_id, product_name):
-    form = ProductForm()
-    form.wholesaler.choices = [(w.id, w.name) for w in Wholesaler.query.all()]
+def edit_customer_order(order_id):
+    order = CustomerOrder.query.get_or_404(order_id)
+    form = CustomerOrderForm(obj=order)
     if form.validate_on_submit():
-        product = Product(
-            product_id=form.product_id.data,
-            name=form.name.data,
-            size=form.size.data,
-            price=form.price.data,
-            wholesaler_id=form.wholesaler.data
-        )
-        db.session.add(product)
+        order.customer_name = form.customer_name.data
+        order.customer_contact = form.customer_contact.data
+        order.is_paid = form.is_paid.data
+        order.status = form.status.data
         db.session.commit()
-        flash('New product added successfully.', 'success')
-        return redirect(url_for('main.add_customer_order_item', order_id=order_id))
-    form.name.data = product_name  # Pre-fill the product name
-    return render_template('add_new_product.html', form=form, title="Add New Product")
+        flash('Order updated successfully.')
+        return redirect(url_for('main.view_customer_order', order_id=order.id))
+    return render_template('edit_customer_order.html', form=form, order=order)
+
+@bp.route('/delete_customer_order/<int:order_id>', methods=['POST'])
+@login_required
+def delete_customer_order(order_id):
+    order = CustomerOrder.query.get_or_404(order_id)
+    # First, delete all related order items
+    for item in order.items:
+        db.session.delete(item)
+    # Then, delete the order itself
+    db.session.delete(order)
+    try:
+        db.session.commit()
+        flash('Order deleted successfully.')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'An error occurred while deleting the order: {str(e)}', 'error')
+    return redirect(url_for('main.customer_orders'))
+
+
+
+@bp.route('/edit_customer_order_item/<int:item_id>', methods=['GET', 'POST'])
+@login_required
+def edit_customer_order_item(item_id):
+    item = CustomerOrderItem.query.get_or_404(item_id)
+    form = CustomerOrderItemForm(obj=item)
+    if form.validate_on_submit():
+        item.quantity = form.quantity.data
+        item.price = form.price.data
+        item.status = form.status.data
+        db.session.commit()
+        flash('Order item updated successfully.')
+        return redirect(url_for('main.view_customer_order', order_id=item.customer_order_id))
+    return render_template('edit_customer_order_item.html', form=form, item=item)
+
+@bp.route('/delete_customer_order_item/<int:item_id>', methods=['POST'])
+@login_required
+def delete_customer_order_item(item_id):
+    item = CustomerOrderItem.query.get_or_404(item_id)
+    order = item.customer_order
+    order.total_amount -= item.quantity * item.price
+    db.session.delete(item)
+    db.session.commit()
+    flash('Order item deleted successfully.')
+    return redirect(url_for('main.view_customer_order', order_id=order.id))
 
 @bp.route('/view_customer_order/<int:order_id>')
 @login_required
 def view_customer_order(order_id):
     order = CustomerOrder.query.get_or_404(order_id)
     return render_template('view_customer_order.html', order=order)
+
+
+
+from flask import render_template, flash, redirect, url_for, request, jsonify
+from app import db
+from app.main import bp
+from app.main.forms import CustomerOrderItemForm, ProductForm
+from app.models import CustomerOrder, CustomerOrderItem, Product, Wholesaler
+from flask_login import login_required
 
 @bp.route('/search_products')
 @login_required
@@ -748,22 +831,44 @@ def search_products():
 def add_customer_order_item(order_id):
     order = CustomerOrder.query.get_or_404(order_id)
     form = CustomerOrderItemForm()
-
     if form.validate_on_submit():
         product = Product.query.filter(Product.name.ilike(f"%{form.product_name.data}%")).first()
-        
         if product:
             item = CustomerOrderItem(
                 customer_order_id=order.id,
                 product_id=product.id,
-                quantity=form.quantity.data
+                quantity=form.quantity.data,
+                price=form.price.data or product.price,
+                status=form.status.data
             )
             db.session.add(item)
-            order.total_amount += product.price * form.quantity.data
+            order.total_amount += item.quantity * item.price
             db.session.commit()
             flash('Item added to the order.', 'success')
+            return redirect(url_for('main.add_customer_order_item', order_id=order.id))
         else:
-            flash('Product not found. Please add it to the database.', 'warning')
-            return redirect(url_for('main.add_new_product', order_id=order.id, product_name=form.product_name.data))
+            flash(f'Product "{form.product_name.data}" not found in database. Would you like to add it?', 'warning')
+            return render_template('add_customer_order_item.html', form=form, order=order, show_add_product=True)
     
-    return render_template('main/add_customer_order_item.html', form=form, order=order)
+    return render_template('add_customer_order_item.html', form=form, order=order, show_add_product=False)
+
+@bp.route('/add_product_to_order/<int:order_id>', methods=['GET', 'POST'])
+@login_required
+def add_product_to_order(order_id):
+    form = ProductForm()
+    form.wholesaler.choices = [(w.id, w.name) for w in Wholesaler.query.all()]
+    
+    if form.validate_on_submit():
+        product = Product(
+            product_id=form.product_id.data,
+            name=form.name.data,
+            size=form.size.data,
+            price=form.price.data,
+            wholesaler_id=form.wholesaler.data
+        )
+        db.session.add(product)
+        db.session.commit()
+        flash('New product added successfully.', 'success')
+        return redirect(url_for('main.add_customer_order_item', order_id=order_id))
+    
+    return render_template('add_product_to_order.html', form=form, title="Add New Product", order_id=order_id)

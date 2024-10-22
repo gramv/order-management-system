@@ -43,9 +43,12 @@ class CustomerOrderForm(FlaskForm):
     customer_name = StringField('Customer Name', validators=[DataRequired()])
     customer_contact = StringField('Customer Contact', validators=[DataRequired()])
     is_paid = BooleanField('Paid')
-    submit = SubmitField('Create Order')
+    status = SelectField('Status', choices=[('pending', 'Pending'), ('complete', 'Complete')], validators=[DataRequired()])
+    submit = SubmitField('Update Order')
 
 class CustomerOrderItemForm(FlaskForm):
     product_name = StringField('Product Name', validators=[DataRequired()])
     quantity = IntegerField('Quantity', validators=[DataRequired()])
+    price = FloatField('Price', validators=[Optional()])
+    status = SelectField('Status', choices=[('pending', 'Pending'), ('complete', 'Complete')], validators=[DataRequired()])
     submit = SubmitField('Add Item')

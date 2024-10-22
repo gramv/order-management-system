@@ -61,6 +61,7 @@ class CustomerOrder(db.Model):
     customer_name = db.Column(db.String(100), nullable=False)
     customer_contact = db.Column(db.String(100), nullable=False)
     order_date = db.Column(db.DateTime, default=datetime.utcnow)
+    status = db.Column(db.String(20), default='pending')  # New field
     is_paid = db.Column(db.Boolean, default=False)
     total_amount = db.Column(db.Float, default=0.0)
     items = db.relationship('CustomerOrderItem', backref='customer_order', lazy='dynamic')
@@ -68,9 +69,13 @@ class CustomerOrder(db.Model):
 class CustomerOrderItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     customer_order_id = db.Column(db.Integer, db.ForeignKey('customer_order.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=True)  # Can be null for custom products
+    custom_product_name = db.Column(db.String(100))  # For products not in stock
     quantity = db.Column(db.Integer, nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(20), default='pending')  # New field
     product = db.relationship('Product', backref='customer_order_items')
+    
 @login.user_loader
 def load_user(id):
     return User.query.get(int(id))

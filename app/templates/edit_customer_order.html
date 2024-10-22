@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <h1>Create Customer Order</h1>
+    <h1>Edit Customer Order #{{ order.id }}</h1>
     <form method="POST">
         {{ form.hidden_tag() }}
         <div class="form-group">
@@ -22,4 +22,5 @@
         </div>
         {{ form.submit(class="btn btn-primary") }}
     </form>
+    <a href="{{ url_for('main.view_customer_order', order_id=order.id) }}" class="btn btn-secondary mt-3">Back to Order</a>
 {% endblock %}
