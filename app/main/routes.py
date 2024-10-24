@@ -872,3 +872,36 @@ def add_product_to_order(order_id):
         return redirect(url_for('main.add_customer_order_item', order_id=order_id))
     
     return render_template('add_product_to_order.html', form=form, title="Add New Product", order_id=order_id)
+    
+
+    # In app/main/routes.py
+
+from flask import current_app, jsonify
+from supabase import create_client
+
+@bp.route('/test-supabase')
+def test_supabase():
+    try:
+        supabase = create_client(
+            current_app.config['SUPABASE_URL'],
+            current_app.config['SUPABASE_ANON_KEY']
+        )
+        # Try a simple query
+        response = supabase.table('user').select("*").execute()
+        return jsonify({
+            'status': 'success',
+            'message': 'Supabase connection successful',
+            'config': {
+                'url_configured': bool(current_app.config['SUPABASE_URL']),
+                'key_configured': bool(current_app.config['SUPABASE_ANON_KEY'])
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'config': {
+                'url_configured': bool(current_app.config['SUPABASE_URL']),
+                'key_configured': bool(current_app.config['SUPABASE_ANON_KEY'])
+            }
+        })
