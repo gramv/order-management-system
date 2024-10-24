@@ -192,8 +192,10 @@ def products():
         return render_template('products.html', title='Products', products=[], bulk_form=bulk_form)
 
 
+import tempfile
 import os
 from werkzeug.utils import secure_filename
+import pandas as pd
 
 @bp.route('/product/add', methods=['GET', 'POST'])
 @login_required
@@ -219,69 +221,70 @@ def add_product():
     
     if bulk_form.validate_on_submit():
         file = bulk_form.file.data
-        filename = secure_filename(file.filename)
-        upload_dir = current_app.config['UPLOAD_FOLDER']
-        
-        # Debug print
-        print(f"Upload directory: {upload_dir}")
-        
-        # Create the upload directory if it doesn't exist
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        file_path = os.path.join(upload_dir, filename)
-        
-        # Debug print
-        print(f"File path: {file_path}")
-        
-        try:
-            file.save(file_path)
-            products = process_excel_file(file_path)
-            for product_data in products:
-                # Debug print
-                print(f"Processing product: {product_data}")
-                product = Product(**product_data)
-                db.session.add(product)
-            db.session.commit()
-            flash(f'{len(products)} products added successfully!', 'success')
-        except Exception as e:
-            # More detailed error logging
-            current_app.logger.error(f"Error processing file: {str(e)}")
-            flash(f'Error processing file: {str(e)}', 'error')
-        finally:
-            if os.path.exists(file_path):
-                os.remove(file_path)  # Remove the uploaded file after processing
-        
-        return redirect(url_for('main.products'))
-    
-    return render_template('product_form.html', title='Add Product', form=form, bulk_form=bulk_form)
-def process_excel_file(file_path):
-    df = pd.read_excel(file_path)
-    required_columns = ['product_id', 'name', 'size', 'price', 'wholesaler_id']
-    
-    if not all(col in df.columns for col in required_columns):
-        raise ValueError("Excel file must contain columns: " + ", ".join(required_columns))
-    
-    products = []
-    for _, row in df.iterrows():
-        try:
-            wholesaler = Wholesaler.query.get(int(row['wholesaler_id']))
-            if not wholesaler:
-                raise ValueError(f"Wholesaler with ID {row['wholesaler_id']} not found")
+        if file:
+            # Create a temporary file
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                try:
+                    # Save uploaded file to temporary location
+                    file.save(temp_file.name)
+                    
+                    # Process the Excel file
+                    products = process_excel_file(temp_file.name)
+                    
+                    # Add products to database
+                    for product_data in products:
+                        product = Product(**product_data)
+                        db.session.add(product)
+                    
+                    db.session.commit()
+                    flash(f'{len(products)} products added successfully!', 'success')
+                    
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.error(f"Error processing file: {str(e)}")
+                    flash(f'Error processing file: {str(e)}', 'error')
+                finally:
+                    # Clean up - remove temporary file
+                    os.unlink(temp_file.name)
             
-            product_data = {
-                'product_id': row['product_id'],
-                'name': row['name'],
-                'size': row['size'],
-                'price': float(row['price']),
-                'wholesaler_id': wholesaler.id
-            }
-            products.append(product_data)
-        except Exception as e:
-            current_app.logger.error(f"Error processing row: {row}. Error: {str(e)}")
-            # You might want to skip this row or handle the error differently
+            return redirect(url_for('main.products'))
     
-    return products
+    return render_template('product_form.html', 
+                         title='Add Product', 
+                         form=form, 
+                         bulk_form=bulk_form)
 
+def process_excel_file(file_path):
+    try:
+        df = pd.read_excel(file_path)
+        required_columns = ['product_id', 'name', 'size', 'price', 'wholesaler_id']
+        
+        if not all(col in df.columns for col in required_columns):
+            raise ValueError("Excel file must contain columns: " + ", ".join(required_columns))
+        
+        products = []
+        for _, row in df.iterrows():
+            try:
+                wholesaler = Wholesaler.query.get(int(row['wholesaler_id']))
+                if not wholesaler:
+                    raise ValueError(f"Wholesaler with ID {row['wholesaler_id']} not found")
+                
+                product_data = {
+                    'product_id': str(row['product_id']),
+                    'name': str(row['name']),
+                    'size': str(row['size']),
+                    'price': float(row['price']),
+                    'wholesaler_id': wholesaler.id
+                }
+                products.append(product_data)
+            except Exception as e:
+                current_app.logger.error(f"Error processing row: {row}. Error: {str(e)}")
+                raise
+        
+        return products
+    except Exception as e:
+        current_app.logger.error(f"Error processing Excel file: {str(e)}")
+        raise
 @bp.route('/product/<int:product_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_product(product_id):

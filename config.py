@@ -11,23 +11,24 @@ class Config(object):
     # URL encode the password to handle special characters
     DB_PASSWORD = quote_plus(os.environ.get('SUPABASE_DB_PASSWORD', ''))
     
-    # Database Configuration using the working connection settings
+    # Database Configuration
     SQLALCHEMY_DATABASE_URI = (
         f"postgresql://postgres.vmkaynbnljwubhxvvflb:{DB_PASSWORD}"
         "@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+        "?sslmode=require"
     )
     
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
-    # Add the working connection parameters
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        'connect_args': {
-            'sslmode': 'require',
-            'host': 'aws-0-us-east-1.pooler.supabase.com',
-            'port': '6543',
-            'client_encoding': 'utf8'
-        }
-    }
+    # Upload folder configuration
+    UPLOAD_FOLDER = os.path.join(basedir, 'app', 'uploads')
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    
+    # Maximum file size (optional)
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max-limit
+    
+    # Allowed file extensions
+    ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
 
     @staticmethod
     def init_app(app):
