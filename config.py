@@ -1,32 +1,33 @@
 import os
+from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(basedir, '.env'))
 
 class Config(object):
-    # Secret key configuration
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'you-will-never-guess'
+    SECRET_KEY = os.environ.get('SECRET_KEY')
     
-    # Supabase PostgreSQL configuration
-    DB_USER = os.environ.get('SUPABASE_DB_USER')
-    DB_PASSWORD = os.environ.get('SUPABASE_DB_PASSWORD')
-    DB_HOST = os.environ.get('SUPABASE_DB_HOST')
-    DB_PORT = os.environ.get('SUPABASE_DB_PORT', '5432')
-    DB_NAME = os.environ.get('SUPABASE_DB_NAME', 'postgres')
+    # URL encode the password to handle special characters
+    DB_PASSWORD = quote_plus(os.environ.get('SUPABASE_DB_PASSWORD', ''))
     
-    # Construct database URL
-    SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    # Database Configuration using the working connection settings
+    SQLALCHEMY_DATABASE_URI = (
+        f"postgresql://postgres.vmkaynbnljwubhxvvflb:{DB_PASSWORD}"
+        "@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+    )
+    
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
-    # Supabase API configuration
-    SUPABASE_URL = os.environ.get('SUPABASE_URL')
-    SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY')
-    
-    # Upload folder configuration
-    BASEDIR = os.path.abspath(os.path.dirname(__file__))
-    UPLOAD_FOLDER = os.path.join(BASEDIR, 'app', 'uploads')
+    # Add the working connection parameters
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'connect_args': {
+            'sslmode': 'require',
+            'host': 'aws-0-us-east-1.pooler.supabase.com',
+            'port': '6543',
+            'client_encoding': 'utf8'
+        }
+    }
 
     @staticmethod
     def init_app(app):
