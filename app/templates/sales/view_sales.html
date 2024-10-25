@@ -29,35 +29,108 @@
             </div>
         </div>
 
-        <!-- Amounts Card -->
-        <div class="col-md-8 mb-4">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">Amounts</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Register Readings</h6>
-                            <p>Front Register: ${{ "%.2f"|format(sales.front_register_amount) }}</p>
-                            <p>Back Register: ${{ "%.2f"|format(sales.back_register_amount) }}</p>
-                            <p>Credit Card: ${{ "%.2f"|format(sales.credit_card_amount) }}</p>
-                            <p>OTC 1: ${{ "%.2f"|format(sales.otc1_amount) }}</p>
-                            <p>OTC 2: ${{ "%.2f"|format(sales.otc2_amount) }}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Actual Collections</h6>
-                            <p>Front Cash: ${{ "%.2f"|format(sales.front_register_cash) }}</p>
-                            <p>Back Cash: ${{ "%.2f"|format(sales.back_register_cash) }}</p>
-                            <p>Credit Card: ${{ "%.2f"|format(sales.credit_card_total) }}</p>
-                            <p>OTC 1: ${{ "%.2f"|format(sales.otc1_total) }}</p>
-                            <p>OTC 2: ${{ "%.2f"|format(sales.otc2_total) }}</p>
-                        </div>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Amounts</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2">Register Readings</h6>
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold">Front Register:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.front_register_amount) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Back Register:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.back_register_amount) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Credit Card:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.credit_card_amount) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">OTC 1:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.otc1_amount) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">OTC 2:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.otc2_amount) }}</td>
+                                </tr>
+                                <tr class="table-primary">
+                                    <td class="fw-bold">Total Expected:</td>
+                                    <td class="text-end fw-bold">${{ "%.2f"|format(sales.total_expected) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2">Actual Collections</h6>
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold">Front Cash:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.front_register_cash) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Back Cash:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.back_register_cash) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Credit Card:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.credit_card_total) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">OTC 1:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.otc1_total) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">OTC 2:</td>
+                                    <td class="text-end">${{ "%.2f"|format(sales.otc2_total) }}</td>
+                                </tr>
+                                <tr class="table-success">
+                                    <td class="fw-bold">Total Actual:</td>
+                                    <td class="text-end fw-bold">${{ "%.2f"|format(sales.total_actual) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+        
+        <!-- Discrepancy Summary -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Discrepancy Details</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tbody>
+                        <tr>
+                            <td class="fw-bold">Front Register Discrepancy:</td>
+                            <td class="text-end {% if sales.front_register_discrepancy <= -10 %}text-danger{% endif %}">
+                                ${{ "%.2f"|format(sales.front_register_discrepancy) }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Back Register Discrepancy:</td>
+                            <td class="text-end {% if sales.back_register_discrepancy <= -10 %}text-danger{% endif %}">
+                                ${{ "%.2f"|format(sales.back_register_discrepancy) }}
+                            </td>
+                        </tr>
+                        <tr class="table-warning">
+                            <td class="fw-bold">Total Discrepancy:</td>
+                            <td class="text-end fw-bold {% if sales.overall_discrepancy <= -10 %}text-danger{% endif %}">
+                                ${{ "%.2f"|format(sales.overall_discrepancy) }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
     <!-- Totals -->
     <div class="row mb-4">

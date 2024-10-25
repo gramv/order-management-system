@@ -1074,10 +1074,11 @@ def record_daily_sales():
             flash('An error occurred while saving the sales record.', 'error')
 
     return render_template('sales/record_sales.html', form=form, title='Record Daily Sales')
+
 @bp.route('/sales/list')
 @login_required
 def list_sales():
-    """List sales records with today's summary by default"""
+    """List all sales records"""
     if not current_user.role == 'owner':
         flash('Access denied.', 'error')
         return redirect(url_for('main.index'))
@@ -1103,17 +1104,20 @@ def list_sales():
         if end_date:
             query = query.filter(DailySales.date <= datetime.strptime(end_date, '%Y-%m-%d').date())
     
-    # Apply status filter
+    # Apply status filter based on -$10 threshold
     if status == 'balanced':
-        query = query.filter(DailySales.overall_discrepancy > -10)  # Changed from 0 to -10
+        query = query.filter(DailySales.overall_discrepancy > -10)
     elif status == 'discrepancy':
-        query = query.filter(DailySales.overall_discrepancy <= -10)  # Changed from 0 to -10
+        query = query.filter(DailySales.overall_discrepancy <= -10)
     
     # Calculate summary statistics
     summary = query.with_entities(
         func.sum(DailySales.total_actual).label('total_sales'),
         func.sum(DailySales.front_register_cash + DailySales.back_register_cash).label('total_cash'),
+        func.sum(DailySales.front_register_cash).label('total_front_cash'),
+        func.sum(DailySales.back_register_cash).label('total_back_cash'),
         func.sum(DailySales.credit_card_total).label('total_card'),
+        func.sum(DailySales.otc1_total + DailySales.otc2_total).label('total_otc'),
         func.sum(DailySales.overall_discrepancy).label('total_discrepancy')
     ).first()
     
@@ -1121,18 +1125,19 @@ def list_sales():
     sales = query.order_by(DailySales.date.desc(), DailySales.report_time.desc()) \
         .paginate(page=page, per_page=10)
     
-    # Check if showing today's data
-    is_today = not (start_date or end_date)
-    
     return render_template('sales/list_sales.html', 
                          sales=sales,
                          total_sales=summary.total_sales or 0,
                          total_cash=summary.total_cash or 0,
+                         total_front_cash=summary.total_front_cash or 0,
+                         total_back_cash=summary.total_back_cash or 0,
                          total_card=summary.total_card or 0,
+                         total_otc=summary.total_otc or 0,
                          total_discrepancy=summary.total_discrepancy or 0,
-                         is_today=is_today,
+                         is_today=not (start_date or end_date),
                          today=today.strftime('%Y-%m-%d'),
-                         title='Today\'s Sales' if is_today else 'Sales Records')
+                         title='Today\'s Sales' if not (start_date or end_date) else 'Sales Records')
+
 @bp.route('/sales/<int:sales_id>/delete', methods=['POST'])
 @login_required
 def delete_sales(sales_id):
