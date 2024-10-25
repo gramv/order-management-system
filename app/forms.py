@@ -1,12 +1,10 @@
-
-from wtforms import StringField, PasswordField, BooleanField, SubmitField, TextAreaField, FloatField, IntegerField, SelectField
-from wtforms.validators import DataRequired, Email, EqualTo, ValidationError
-from app.models import User
 from flask_wtf import FlaskForm
-from wtforms import StringField, IntegerField, SubmitField, HiddenField
-from wtforms.validators import DataRequired
+from wtforms import (StringField, PasswordField, BooleanField, SubmitField, 
+                    TextAreaField, FloatField, DateTimeField)
+from wtforms.validators import DataRequired, Email, EqualTo, ValidationError, NumberRange
 from flask_wtf.file import FileField, FileAllowed
-from wtforms.validators import DataRequired, NumberRange
+from app.models import User
+from datetime import datetime  # Add this import
 
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
@@ -31,34 +29,42 @@ class RegistrationForm(FlaskForm):
         if user is not None:
             raise ValidationError('Please use a different email address.')
 
-
-
-class ProductForm(FlaskForm):
-    product_id = StringField('Product ID', validators=[DataRequired()])
-    name = StringField('Product Name', validators=[DataRequired()])
-    size = StringField('Size')
-    price = FloatField('Price', validators=[DataRequired(), NumberRange(min=0)])
-    wholesaler = SelectField('Wholesaler', coerce=int, validators=[DataRequired()])
-    submit = SubmitField('Add Product')
-
-class BulkUploadForm(FlaskForm):
-    file = FileField('Excel File', validators=[
-        FileAllowed(['xlsx'], 'Please upload only Excel files (.xlsx)'),
-        DataRequired()
-    ])
-    submit = SubmitField('Upload Products')
-
-class WholesalerForm(FlaskForm):
-    name = StringField('Wholesaler Name', validators=[DataRequired()])
-    is_daily = BooleanField('Is Daily Wholesaler')
-    contact_person = StringField('Contact Person')
-    email = StringField('Email', validators=[DataRequired(), Email()])
-    phone = StringField('Phone')
-    submit = SubmitField('Submit')
-
-
-class OrderListForm(FlaskForm):
-    product = StringField('Product', validators=[DataRequired()])
-    product_id = HiddenField('Product ID')
-    quantity = IntegerField('Quantity', validators=[DataRequired()])
-    submit = SubmitField('Add to Order')
+class DailySalesForm(FlaskForm):
+    report_time = DateTimeField('Report Time', 
+        default=datetime.now,
+        validators=[DataRequired()])
+    
+    # Register readings
+    front_register_amount = FloatField('Front Register Reading', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    back_register_amount = FloatField('Back Register Reading', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    credit_card_amount = FloatField('Credit Card Machine Reading', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    otc1_amount = FloatField('OTC Machine 1 Reading', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    otc2_amount = FloatField('OTC Machine 2 Reading', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    
+    # Actual collections
+    front_register_cash = FloatField('Front Register Cash', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    back_register_cash = FloatField('Back Register Cash', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    credit_card_total = FloatField('Actual Credit Card Total', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    otc1_total = FloatField('Actual OTC 1 Total', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    otc2_total = FloatField('Actual OTC 2 Total', 
+        validators=[DataRequired(), NumberRange(min=0)])
+    
+    # Document uploads
+    register_reports = FileField('Register Reports', 
+        validators=[FileAllowed(['jpg', 'jpeg', 'png', 'pdf'])])
+    credit_card_statement = FileField('Credit Card Statement', 
+        validators=[FileAllowed(['jpg', 'jpeg', 'png', 'pdf'])])
+    otc_statements = FileField('OTC Statements', 
+        validators=[FileAllowed(['jpg', 'jpeg', 'png', 'pdf'])])
+    
+    notes = TextAreaField('Notes')
+    submit = SubmitField('Submit Sales Report')

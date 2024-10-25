@@ -1,32 +1,36 @@
+import os
+import traceback
+from datetime import datetime, timedelta
+
+import pandas as pd
+
 from flask import render_template, flash, redirect, url_for, request, jsonify, current_app
 from flask_login import login_required, current_user
+from flask_wtf import FlaskForm
+from flask_wtf.file import FileField, FileAllowed
+
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import or_
-from app import db
-from app.main import bp
-from app.main.forms import ProductForm, WholesalerForm, OrderListForm
-from app.models import Product, Wholesaler, OrderList, OrderListItem
-from datetime import datetime
-from flask import current_app
-import traceback
-from flask import render_template, flash, redirect, url_for, request
-from flask_login import login_required, current_user
-from sqlalchemy import desc
-from app import db
-from app.main import bp
-from app.models import OrderList, Wholesaler
-from datetime import datetime
+from sqlalchemy import or_, desc, func
 from sqlalchemy.orm import joinedload
-from app.models import OrderList, OrderListItem, Wholesaler
-import os
-import os
+
 from werkzeug.utils import secure_filename
-import pandas as pd
-from app.main.forms import ProductForm, BulkUploadForm
-from sqlalchemy import func
-from datetime import datetime, timedelta
-from app.models import CustomerOrder, CustomerOrderItem
-from app.main.forms import CustomerOrderForm, CustomerOrderItemForm
+
+from wtforms import StringField, FloatField, SelectField, SubmitField
+from wtforms.validators import DataRequired, NumberRange
+
+from app import db
+from app.main import bp
+
+from app.main.forms import (ProductForm, WholesalerForm, OrderListForm,
+                            BulkUploadForm, CustomerOrderForm, CustomerOrderItemForm)
+from app.forms import DailySalesForm
+
+from app.models import (User, Product, Wholesaler, OrderList, OrderListItem,
+                        CustomerOrder, CustomerOrderItem, DailySales, SalesDocument)
+
+from app.utils.storage import CloudinaryStorage
+
+
 
 
 @bp.route('/')
@@ -285,6 +289,7 @@ def process_excel_file(file_path):
     except Exception as e:
         current_app.logger.error(f"Error processing Excel file: {str(e)}")
         raise
+
 @bp.route('/product/<int:product_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_product(product_id):
@@ -908,3 +913,234 @@ def test_supabase():
                 'key_configured': bool(current_app.config['SUPABASE_ANON_KEY'])
             }
         })
+    
+@bp.route('/sales/upload_document', methods=['POST'])
+@login_required
+def upload_sales_document():
+    """Handle document upload for sales reports"""
+    try:
+        sales_id = request.form.get('sales_id')
+        document_type = request.form.get('document_type')
+        file = request.files.get('file')
+        
+        if not all([sales_id, document_type, file]):
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+            
+        # Upload to Cloudinary
+        result = CloudinaryStorage.upload_file(
+            file,
+            folder=f"sales_reports/{document_type}",
+            public_id_prefix=f"sales_{sales_id}_{document_type}"
+        )
+        
+        if not result['success']:
+            return jsonify({'success': False, 'error': result['error']}), 500
+            
+        # Save document record
+        document = SalesDocument(
+            sales_id=sales_id,
+            document_type=document_type,
+            filename=file.filename,
+            cloudinary_public_id=result['public_id'],
+            secure_url=result['secure_url']
+        )
+        
+        db.session.add(document)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'document_id': document.id,
+            'url': document.secure_url
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Document upload error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@bp.route('/sales/document/<int:document_id>/delete', methods=['POST'])
+@login_required
+def delete_sales_document(document_id):
+    """Delete a sales document"""
+    try:
+        document = SalesDocument.query.get_or_404(document_id)
+        
+        # Delete from Cloudinary
+        if CloudinaryStorage.delete_file(document.cloudinary_public_id):
+            db.session.delete(document)
+            db.session.commit()
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to delete from storage'}), 500
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+    # app/main/routes.py
+
+
+@bp.route('/sales/record', methods=['GET', 'POST'])
+@login_required
+def record_daily_sales():
+    form = DailySalesForm()
+    if form.validate_on_submit():
+        try:
+            # Print form data for debugging
+            current_app.logger.info(f"Form Data: {form.data}")
+            
+            sales = DailySales(
+                date=datetime.utcnow().date(),
+                report_time=form.report_time.data,
+                employee_id=current_user.id,
+                front_register_amount=form.front_register_amount.data,
+                back_register_amount=form.back_register_amount.data,
+                credit_card_amount=form.credit_card_amount.data,
+                otc1_amount=form.otc1_amount.data,
+                otc2_amount=form.otc2_amount.data,
+                front_register_cash=form.front_register_cash.data,
+                back_register_cash=form.back_register_cash.data,
+                credit_card_total=form.credit_card_total.data,
+                otc1_total=form.otc1_total.data,
+                otc2_total=form.otc2_total.data,
+                notes=form.notes.data
+            )
+            
+            sales.calculate_discrepancies()
+            db.session.add(sales)
+            db.session.commit()
+            
+            # Log success of database save
+            current_app.logger.info(f"Sales record created with ID: {sales.id}")
+
+            # Handle file uploads if present
+            if form.register_reports.data:
+                current_app.logger.info("Processing register reports upload")
+                upload_file(sales, form.register_reports.data, 'register_report')
+                
+            if form.credit_card_statement.data:
+                current_app.logger.info("Processing credit card statement upload")
+                upload_file(sales, form.credit_card_statement.data, 'credit_card_statement')
+                
+            if form.otc_statements.data:
+                current_app.logger.info("Processing OTC statements upload")
+                upload_file(sales, form.otc_statements.data, 'otc_statements')
+
+            db.session.commit()
+            flash('Sales record saved successfully!', 'success')
+            return redirect(url_for('main.list_sales'))
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error saving sales record: {str(e)}")
+            flash(f'An error occurred while saving the sales record: {str(e)}', 'error')
+    else:
+        # Log form validation errors
+        if form.errors:
+            current_app.logger.error(f"Form validation errors: {form.errors}")
+            flash(f'Form has errors: {form.errors}', 'error')
+
+    return render_template('sales/record_sales.html', form=form, title='Record Daily Sales')
+@bp.route('/sales/list')
+@login_required
+def list_sales():
+    """List sales records with today's summary by default"""
+    if not current_user.role == 'owner':
+        flash('Access denied.', 'error')
+        return redirect(url_for('main.index'))
+
+    # Get filter parameters
+    page = request.args.get('page', 1, type=int)
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    status = request.args.get('status')
+    
+    # Get today's date
+    today = datetime.now().date()
+    
+    # Base query
+    query = DailySales.query
+    
+    # If no dates specified, show today's records
+    if not start_date and not end_date:
+        query = query.filter(DailySales.date == today)
+    else:
+        if start_date:
+            query = query.filter(DailySales.date >= datetime.strptime(start_date, '%Y-%m-%d').date())
+        if end_date:
+            query = query.filter(DailySales.date <= datetime.strptime(end_date, '%Y-%m-%d').date())
+    
+    # Apply status filter
+    if status == 'balanced':
+        query = query.filter(DailySales.overall_discrepancy > -10)  # Changed from 0 to -10
+    elif status == 'discrepancy':
+        query = query.filter(DailySales.overall_discrepancy <= -10)  # Changed from 0 to -10
+    
+    # Calculate summary statistics
+    summary = query.with_entities(
+        func.sum(DailySales.total_actual).label('total_sales'),
+        func.sum(DailySales.front_register_cash + DailySales.back_register_cash).label('total_cash'),
+        func.sum(DailySales.credit_card_total).label('total_card'),
+        func.sum(DailySales.overall_discrepancy).label('total_discrepancy')
+    ).first()
+    
+    # Get paginated results
+    sales = query.order_by(DailySales.date.desc(), DailySales.report_time.desc()) \
+        .paginate(page=page, per_page=10)
+    
+    # Check if showing today's data
+    is_today = not (start_date or end_date)
+    
+    return render_template('sales/list_sales.html', 
+                         sales=sales,
+                         total_sales=summary.total_sales or 0,
+                         total_cash=summary.total_cash or 0,
+                         total_card=summary.total_card or 0,
+                         total_discrepancy=summary.total_discrepancy or 0,
+                         is_today=is_today,
+                         today=today.strftime('%Y-%m-%d'),
+                         title='Today\'s Sales' if is_today else 'Sales Records')
+@bp.route('/sales/<int:sales_id>/delete', methods=['POST'])
+@login_required
+def delete_sales(sales_id):
+    """Delete a sales record"""
+    if not current_user.role == 'owner':
+        flash('Access denied.', 'error')
+        return redirect(url_for('main.index'))
+        
+    try:
+        sales = DailySales.query.get_or_404(sales_id)
+        
+        # Delete associated documents from Cloudinary
+        for document in sales.documents:
+            if document.cloudinary_public_id:  # Check if document exists
+                CloudinaryStorage.delete_file(document.cloudinary_public_id)
+        
+        # Delete the sales record and its documents
+        db.session.delete(sales)
+        db.session.commit()
+        
+        flash('Sales record deleted successfully.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting sales record: {str(e)}")
+        flash('Error deleting sales record.', 'error')
+        
+    return redirect(url_for('main.list_sales'))
+
+@bp.route('/sales/view/<int:sales_id>')
+@login_required
+def view_sales(sales_id):
+    """View a specific sales record"""
+    sales = DailySales.query.get_or_404(sales_id)
+    
+    # Calculate totals for quick reference
+    totals = {
+        'cash': sales.front_register_cash + sales.back_register_cash,
+        'card': sales.credit_card_total,
+        'otc': sales.otc1_total + sales.otc2_total,
+    }
+    
+    return render_template('sales/view_sales.html', 
+                         sales=sales, 
+                         totals=totals,
+                         title='Sales Record Details')

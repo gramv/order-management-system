@@ -1,6 +1,7 @@
 from flask_wtf import FlaskForm
-from wtforms import HiddenField, StringField, FloatField, BooleanField, SubmitField, IntegerField, FieldList, FormField, SelectField
-from wtforms.validators import DataRequired, NumberRange, Email, Optional
+from wtforms import (StringField, FloatField, SelectField, SubmitField, 
+                    BooleanField, IntegerField, HiddenField)
+from wtforms.validators import DataRequired, Email, NumberRange, Optional
 from flask_wtf.file import FileField, FileAllowed
 
 class ProductForm(FlaskForm):
@@ -10,8 +11,6 @@ class ProductForm(FlaskForm):
     price = FloatField('Price', validators=[DataRequired(), NumberRange(min=0)])
     wholesaler = SelectField('Wholesaler', coerce=int, validators=[DataRequired()])
     submit = SubmitField('Submit')
-
-# Keep your other form classes (WholesalerForm, OrderListForm, etc.) as they were
 
 class WholesalerForm(FlaskForm):
     name = StringField('Name', validators=[DataRequired()])
@@ -43,12 +42,16 @@ class CustomerOrderForm(FlaskForm):
     customer_name = StringField('Customer Name', validators=[DataRequired()])
     customer_contact = StringField('Customer Contact', validators=[DataRequired()])
     is_paid = BooleanField('Paid')
-    status = SelectField('Status', choices=[('pending', 'Pending'), ('complete', 'Complete')], validators=[DataRequired()])
+    status = SelectField('Status', 
+                      choices=[('pending', 'Pending'), ('complete', 'Complete')], 
+                      validators=[DataRequired()])
     submit = SubmitField('Update Order')
 
 class CustomerOrderItemForm(FlaskForm):
     product_name = StringField('Product Name', validators=[DataRequired()])
     quantity = IntegerField('Quantity', validators=[DataRequired()])
     price = FloatField('Price', validators=[Optional()])
-    status = SelectField('Status', choices=[('pending', 'Pending'), ('complete', 'Complete')], validators=[DataRequired()])
+    status = SelectField('Status', 
+                      choices=[('pending', 'Pending'), ('complete', 'Complete')], 
+                      validators=[DataRequired()])
     submit = SubmitField('Add Item')

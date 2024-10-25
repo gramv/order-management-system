@@ -3,26 +3,101 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), index=True, unique=True)
-    email = db.Column(db.String(120), index=True, unique=True)
-    password_hash = db.Column(db.String(256))
-
-    def set_password(self, password):
-        """Set password hash for the user"""
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        """Check if provided password matches the hash"""
-        return check_password_hash(self.password_hash, password)
-
-    def __repr__(self):
-        return f'<User {self.username}>'
+from app import db, login
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
 
 @login.user_loader
 def load_user(id):
     return User.query.get(int(id))
+
+class User(UserMixin, db.Model):
+    __tablename__ = 'user'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(64), index=True, unique=True)
+    email = db.Column(db.String(120), index=True, unique=True)
+    password_hash = db.Column(db.String(256))
+    role = db.Column(db.String(20), default='employee')  # 'employee', 'owner'
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def is_owner(self):
+        return self.role == 'owner'
+
+class DailySales(db.Model):
+    __tablename__ = 'daily_sales'
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False, index=True)
+    report_time = db.Column(db.DateTime, nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    
+    # Register Readings
+    front_register_amount = db.Column(db.Float, nullable=False)
+    back_register_amount = db.Column(db.Float, nullable=False)
+    credit_card_amount = db.Column(db.Float, nullable=False)
+    otc1_amount = db.Column(db.Float, nullable=False)
+    otc2_amount = db.Column(db.Float, nullable=False)
+    
+    # Actual Collections
+    front_register_cash = db.Column(db.Float, nullable=False)
+    back_register_cash = db.Column(db.Float, nullable=False)
+    credit_card_total = db.Column(db.Float, nullable=False)
+    otc1_total = db.Column(db.Float, nullable=False)
+    otc2_total = db.Column(db.Float, nullable=False)
+    
+    # Calculated fields
+    total_expected = db.Column(db.Float, nullable=False)
+    total_actual = db.Column(db.Float, nullable=False)
+    front_register_discrepancy = db.Column(db.Float, nullable=False)
+    back_register_discrepancy = db.Column(db.Float, nullable=False)
+    overall_discrepancy = db.Column(db.Float, nullable=False)
+    
+    notes = db.Column(db.Text)
+    status = db.Column(db.String(20), default='pending')
+    
+    # Relationships
+    employee = db.relationship('User', backref='sales_reports')
+    documents = db.relationship('SalesDocument', backref='sales_report', cascade='all, delete-orphan')
+
+    def calculate_discrepancies(self):
+        # Calculate all discrepancies
+        self.front_register_discrepancy = self.front_register_amount - self.front_register_cash
+        self.back_register_discrepancy = self.back_register_amount - self.back_register_cash
+        
+        self.total_expected = (
+            self.front_register_amount +
+            self.back_register_amount +
+            self.credit_card_amount +
+            self.otc1_amount +
+            self.otc2_amount
+        )
+        
+        self.total_actual = (
+            self.front_register_cash +
+            self.back_register_cash +
+            self.credit_card_total +
+            self.otc1_total +
+            self.otc2_total
+        )
+        
+        self.overall_discrepancy = self.total_expected - self.total_actual
+
+class SalesDocument(db.Model):
+    __tablename__ = 'sales_documents'  # Note the plural form
+    id = db.Column(db.Integer, primary_key=True)
+    sales_id = db.Column(db.Integer, db.ForeignKey('daily_sales.id'), nullable=False)
+    document_type = db.Column(db.String(50), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    cloudinary_public_id = db.Column(db.String(255), nullable=False)
+    secure_url = db.Column(db.String(512), nullable=False)
+    upload_time = db.Column(db.DateTime, default=datetime.utcnow)
+
+# Include your other existing models here...
 
 class Wholesaler(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -84,7 +159,4 @@ class CustomerOrderItem(db.Model):
     price = db.Column(db.Float, nullable=False)
     status = db.Column(db.String(20), default='pending')  # New field
     product = db.relationship('Product', backref='customer_order_items')
-    
-@login.user_loader
-def load_user(id):
-    return User.query.get(int(id))
+

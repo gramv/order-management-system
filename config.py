@@ -1,6 +1,8 @@
 import os
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
+import cloudinary
+
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(basedir, '.env'))
@@ -30,6 +32,22 @@ class Config(object):
     # Allowed file extensions
     ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
 
+    # Add these to your Config class
+    # Allowed file types for sales documents
+    ALLOWED_REPORT_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png'}
+    MAX_REPORT_SIZE = 5 * 1024 * 1024  # 5MB max file size
+    
+    # Cloudinary configuration
+    CLOUDINARY_CLOUD_NAME = os.environ.get('CLOUDINARY_CLOUD_NAME')
+    CLOUDINARY_API_KEY = os.environ.get('CLOUDINARY_API_KEY')
+    CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
+    
     @staticmethod
     def init_app(app):
-        pass
+        # Initialize Cloudinary
+        cloudinary.config(
+            cloud_name=app.config['CLOUDINARY_CLOUD_NAME'],
+            api_key=app.config['CLOUDINARY_API_KEY'],
+            api_secret=app.config['CLOUDINARY_API_SECRET'],
+            secure=True
+        )

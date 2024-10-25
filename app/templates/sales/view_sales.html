@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Sales Record Details</h1>
+        <a href="{{ url_for('main.list_sales') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to List
+        </a>
+    </div>
+
+    <div class="row">
+        <!-- Summary Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Summary</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Date:</strong> {{ sales.date.strftime('%Y-%m-%d') }}</p>
+                    <p><strong>Time:</strong> {{ sales.report_time.strftime('%H:%M') }}</p>
+                    <p><strong>Employee:</strong> {{ sales.employee.username }}</p>
+                    <p><strong>Status:</strong> 
+                        <span class="badge {% if sales.overall_discrepancy <= -10 %}bg-warning{% else %}bg-success{% endif %}">
+                            {{ "Discrepancy" if sales.overall_discrepancy <= -10 else "Balanced" }}
+                        </span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Amounts Card -->
+        <div class="col-md-8 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Amounts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Register Readings</h6>
+                            <p>Front Register: ${{ "%.2f"|format(sales.front_register_amount) }}</p>
+                            <p>Back Register: ${{ "%.2f"|format(sales.back_register_amount) }}</p>
+                            <p>Credit Card: ${{ "%.2f"|format(sales.credit_card_amount) }}</p>
+                            <p>OTC 1: ${{ "%.2f"|format(sales.otc1_amount) }}</p>
+                            <p>OTC 2: ${{ "%.2f"|format(sales.otc2_amount) }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Actual Collections</h6>
+                            <p>Front Cash: ${{ "%.2f"|format(sales.front_register_cash) }}</p>
+                            <p>Back Cash: ${{ "%.2f"|format(sales.back_register_cash) }}</p>
+                            <p>Credit Card: ${{ "%.2f"|format(sales.credit_card_total) }}</p>
+                            <p>OTC 1: ${{ "%.2f"|format(sales.otc1_total) }}</p>
+                            <p>OTC 2: ${{ "%.2f"|format(sales.otc2_total) }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Totals -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Expected</h6>
+                    <h3>${{ "%.2f"|format(sales.total_expected) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Actual</h6>
+                    <h3>${{ "%.2f"|format(sales.total_actual) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card {% if sales.overall_discrepancy <= -10 %}bg-warning{% else %}bg-info{% endif %} text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Discrepancy</h6>
+                    <h3>${{ "%.2f"|format(sales.overall_discrepancy) }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Documents -->
+    {% if sales.documents %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Documents</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% for doc in sales.documents %}
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6>{{ doc.document_type|title }}</h6>
+                            <p class="small text-muted mb-2">{{ doc.filename }}</p>
+                            <a href="{{ doc.secure_url }}" target="_blank" class="btn btn-sm btn-primary">
+                                <i class="fas fa-external-link-alt"></i> View
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Notes -->
+    {% if sales.notes %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Notes</h5>
+        </div>
+        <div class="card-body">
+            {{ sales.notes|replace('\n', '<br>')|safe }}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

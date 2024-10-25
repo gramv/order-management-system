@@ -9,6 +9,7 @@ migrate = Migrate()
 login = LoginManager()
 login.login_view = 'auth.login'
 
+# Add to your existing create_app function
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -23,6 +24,8 @@ def create_app(config_class=Config):
     from app.main import bp as main_bp
     app.register_blueprint(main_bp)
 
-    return app
+    # Register CLI commands
+    from app.cli import register_commands
+    register_commands(app)
 
-from app import models
+    return app
