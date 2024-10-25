@@ -1,8 +1,7 @@
 import cloudinary
 import cloudinary.uploader
 from flask import current_app
-import logging
-from datetime import datetime  # Add this import
+from datetime import datetime
 
 class CloudinaryStorage:
     @staticmethod

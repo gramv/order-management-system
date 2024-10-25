@@ -979,15 +979,18 @@ def delete_sales_document(document_id):
     # app/main/routes.py
 
 
+# Make sure these imports are at the top of routes.py
+from flask import render_template, flash, redirect, url_for, request, jsonify, current_app
+from app.utils.storage import CloudinaryStorage
+
 @bp.route('/sales/record', methods=['GET', 'POST'])
 @login_required
 def record_daily_sales():
+    """Record daily sales entry"""
     form = DailySalesForm()
     if form.validate_on_submit():
         try:
-            # Print form data for debugging
-            current_app.logger.info(f"Form Data: {form.data}")
-            
+            # Create sales record
             sales = DailySales(
                 date=datetime.utcnow().date(),
                 report_time=form.report_time.data,
@@ -1007,37 +1010,68 @@ def record_daily_sales():
             
             sales.calculate_discrepancies()
             db.session.add(sales)
-            db.session.commit()
-            
-            # Log success of database save
-            current_app.logger.info(f"Sales record created with ID: {sales.id}")
+            db.session.commit()  # Commit first to get sales.id
 
-            # Handle file uploads if present
+            # Initialize CloudinaryStorage
+            storage = CloudinaryStorage()
+            
+            # Handle file uploads
             if form.register_reports.data:
-                current_app.logger.info("Processing register reports upload")
-                upload_file(sales, form.register_reports.data, 'register_report')
-                
+                result = storage.upload_file(
+                    form.register_reports.data,
+                    folder="register_reports",
+                    public_id_prefix=f"sales_{sales.id}_register"
+                )
+                if result['success']:
+                    doc = SalesDocument(
+                        sales_id=sales.id,
+                        document_type='register_report',
+                        filename=form.register_reports.data.filename,
+                        cloudinary_public_id=result['public_id'],
+                        secure_url=result['secure_url']
+                    )
+                    db.session.add(doc)
+
             if form.credit_card_statement.data:
-                current_app.logger.info("Processing credit card statement upload")
-                upload_file(sales, form.credit_card_statement.data, 'credit_card_statement')
-                
+                result = storage.upload_file(
+                    form.credit_card_statement.data,
+                    folder="credit_card_statements",
+                    public_id_prefix=f"sales_{sales.id}_cc"
+                )
+                if result['success']:
+                    doc = SalesDocument(
+                        sales_id=sales.id,
+                        document_type='credit_card_statement',
+                        filename=form.credit_card_statement.data.filename,
+                        cloudinary_public_id=result['public_id'],
+                        secure_url=result['secure_url']
+                    )
+                    db.session.add(doc)
+
             if form.otc_statements.data:
-                current_app.logger.info("Processing OTC statements upload")
-                upload_file(sales, form.otc_statements.data, 'otc_statements')
+                result = storage.upload_file(
+                    form.otc_statements.data,
+                    folder="otc_statements",
+                    public_id_prefix=f"sales_{sales.id}_otc"
+                )
+                if result['success']:
+                    doc = SalesDocument(
+                        sales_id=sales.id,
+                        document_type='otc_statement',
+                        filename=form.otc_statements.data.filename,
+                        cloudinary_public_id=result['public_id'],
+                        secure_url=result['secure_url']
+                    )
+                    db.session.add(doc)
 
             db.session.commit()
             flash('Sales record saved successfully!', 'success')
             return redirect(url_for('main.list_sales'))
-            
+
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error saving sales record: {str(e)}")
-            flash(f'An error occurred while saving the sales record: {str(e)}', 'error')
-    else:
-        # Log form validation errors
-        if form.errors:
-            current_app.logger.error(f"Form validation errors: {form.errors}")
-            flash(f'Form has errors: {form.errors}', 'error')
+            flash('An error occurred while saving the sales record.', 'error')
 
     return render_template('sales/record_sales.html', form=form, title='Record Daily Sales')
 @bp.route('/sales/list')
