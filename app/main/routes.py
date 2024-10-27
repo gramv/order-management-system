@@ -29,14 +29,67 @@ from app.models import (User, Product, Wholesaler, OrderList, OrderListItem,
                         CustomerOrder, CustomerOrderItem, DailySales, SalesDocument)
 
 from app.utils.storage import CloudinaryStorage
-
-
-
+from flask import render_template
+from flask_login import login_required, current_user
+from app.main import bp
+from app.models import DailySales, OrderList, CustomerOrder, Product, Wholesaler
+from sqlalchemy import desc
+from datetime import datetime, date
 
 @bp.route('/')
 @bp.route('/index')
+@login_required
 def index():
-    return render_template('index.html', title='Home')
+    today = date.today()
+    
+    if current_user.role == 'owner':
+        # Get data for owner dashboard
+        today_sales = DailySales.query.filter_by(date=today).all()
+        pending_daily_orders = OrderList.query.filter_by(type='daily', status='pending').count()
+        pending_monthly_orders = OrderList.query.filter_by(type='monthly', status='pending').count()
+        customer_orders = CustomerOrder.query.filter_by(status='pending').count()
+        
+        # Recent sales with discrepancies
+        recent_discrepancies = DailySales.query\
+            .filter(DailySales.overall_discrepancy < -10)\
+            .order_by(desc(DailySales.date))\
+            .limit(5)\
+            .all()
+        
+        # Recent orders
+        recent_customer_orders = CustomerOrder.query\
+            .order_by(desc(CustomerOrder.order_date))\
+            .limit(5)\
+            .all()
+
+        return render_template('main/owner_dashboard.html',
+                           datetime=datetime,  # Pass datetime module
+                           today_sales=today_sales,
+                           pending_daily_orders=pending_daily_orders,
+                           pending_monthly_orders=pending_monthly_orders,
+                           customer_orders=customer_orders,
+                           recent_discrepancies=recent_discrepancies,
+                           recent_customer_orders=recent_customer_orders)
+    
+    else:
+        # Get data for employee dashboard
+        today_orders = OrderList.query\
+            .filter_by(date=today, type='daily')\
+            .order_by(desc(OrderList.id))\
+            .limit(5)\
+            .all()
+            
+        recent_customer_orders = CustomerOrder.query\
+            .order_by(desc(CustomerOrder.order_date))\
+            .limit(5)\
+            .all()
+
+        return render_template('main/employee_dashboard.html',
+                           datetime=datetime,  # Pass datetime module here too
+                           today_orders=today_orders,
+                           recent_customer_orders=recent_customer_orders)
+
+
 
 @bp.route('/daily_orders')
 @login_required
@@ -1083,32 +1136,28 @@ def list_sales():
         flash('Access denied.', 'error')
         return redirect(url_for('main.index'))
 
-    # Get filter parameters
     page = request.args.get('page', 1, type=int)
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    status = request.args.get('status')
     
-    # Get today's date
-    today = datetime.now().date()
+    # Handle show today
+    show_today = request.args.get('show_today', False, type=bool)
+    start_date = end_date = None
     
-    # Base query
-    query = DailySales.query
-    
-    # If no dates specified, show today's records
-    if not start_date and not end_date:
-        query = query.filter(DailySales.date == today)
+    if show_today:
+        start_date = end_date = date.today()
     else:
-        if start_date:
-            query = query.filter(DailySales.date >= datetime.strptime(start_date, '%Y-%m-%d').date())
-        if end_date:
-            query = query.filter(DailySales.date <= datetime.strptime(end_date, '%Y-%m-%d').date())
+        if request.args.get('start_date'):
+            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
+        if request.args.get('end_date'):
+            end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
     
-    # Apply status filter based on -$10 threshold
-    if status == 'balanced':
-        query = query.filter(DailySales.overall_discrepancy > -10)
-    elif status == 'discrepancy':
-        query = query.filter(DailySales.overall_discrepancy <= -10)
+    # Base query with joins
+    query = DailySales.query.join(User, DailySales.employee_id == User.id)
+    
+    # Apply date filters
+    if start_date:
+        query = query.filter(DailySales.date >= start_date)
+    if end_date:
+        query = query.filter(DailySales.date <= end_date)
     
     # Calculate summary statistics
     summary = query.with_entities(
@@ -1120,11 +1169,11 @@ def list_sales():
         func.sum(DailySales.otc1_total + DailySales.otc2_total).label('total_otc'),
         func.sum(DailySales.overall_discrepancy).label('total_discrepancy')
     ).first()
-    
+
     # Get paginated results
     sales = query.order_by(DailySales.date.desc(), DailySales.report_time.desc()) \
         .paginate(page=page, per_page=10)
-    
+
     return render_template('sales/list_sales.html', 
                          sales=sales,
                          total_sales=summary.total_sales or 0,
@@ -1134,9 +1183,10 @@ def list_sales():
                          total_card=summary.total_card or 0,
                          total_otc=summary.total_otc or 0,
                          total_discrepancy=summary.total_discrepancy or 0,
-                         is_today=not (start_date or end_date),
-                         today=today.strftime('%Y-%m-%d'),
-                         title='Today\'s Sales' if not (start_date or end_date) else 'Sales Records')
+                         start_date=start_date,
+                         end_date=end_date,
+                         abs=abs,  # Pass abs function
+                         is_today=show_today)
 
 @bp.route('/sales/<int:sales_id>/delete', methods=['POST'])
 @login_required
@@ -1170,7 +1220,10 @@ def delete_sales(sales_id):
 @login_required
 def view_sales(sales_id):
     """View a specific sales record"""
-    sales = DailySales.query.get_or_404(sales_id)
+    sales = DailySales.query.options(
+        joinedload(DailySales.employee),
+        joinedload(DailySales.documents)
+    ).get_or_404(sales_id)
     
     # Calculate totals for quick reference
     totals = {
@@ -1182,4 +1235,5 @@ def view_sales(sales_id):
     return render_template('sales/view_sales.html', 
                          sales=sales, 
                          totals=totals,
+                         abs=abs,  # Pass the abs function to template
                          title='Sales Record Details')

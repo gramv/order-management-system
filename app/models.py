@@ -36,14 +36,14 @@ class DailySales(db.Model):
     report_time = db.Column(db.DateTime, nullable=False)
     employee_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     
-    # Register Readings
+    # Register readings
     front_register_amount = db.Column(db.Float, nullable=False)
     back_register_amount = db.Column(db.Float, nullable=False)
     credit_card_amount = db.Column(db.Float, nullable=False)
     otc1_amount = db.Column(db.Float, nullable=False)
     otc2_amount = db.Column(db.Float, nullable=False)
     
-    # Actual Collections
+    # Actual collections
     front_register_cash = db.Column(db.Float, nullable=False)
     back_register_cash = db.Column(db.Float, nullable=False)
     credit_card_total = db.Column(db.Float, nullable=False)
@@ -61,14 +61,21 @@ class DailySales(db.Model):
     status = db.Column(db.String(20), default='pending')
     
     # Relationships
-    employee = db.relationship('User', backref='sales_reports')
+    employee = db.relationship('User', backref=db.backref('sales_records', lazy=True))
     documents = db.relationship('SalesDocument', backref='sales_report', cascade='all, delete-orphan')
 
     def calculate_discrepancies(self):
-        # Calculate all discrepancies
-        self.front_register_discrepancy = self.front_register_amount - self.front_register_cash
-        self.back_register_discrepancy = self.back_register_amount - self.back_register_cash
+        """
+        Calculate all discrepancy amounts
+        Discrepancy = Actual - Expected
+        Negative (-) means we have LESS than expected (MISSING money)
+        Positive (+) means we have MORE than expected (EXTRA money)
+        """
+        # Individual register discrepancies
+        self.front_register_discrepancy = self.front_register_cash - self.front_register_amount
+        self.back_register_discrepancy = self.back_register_cash - self.back_register_amount
         
+        # Calculate totals
         self.total_expected = (
             self.front_register_amount +
             self.back_register_amount +
@@ -85,8 +92,19 @@ class DailySales(db.Model):
             self.otc2_total
         )
         
-        self.overall_discrepancy = self.total_expected - self.total_actual
+        # Overall discrepancy
+        self.overall_discrepancy = self.total_actual - self.total_expected
 
+    @property
+    def has_significant_discrepancy(self):
+        """Check if there's a significant discrepancy (more than $10 either way)"""
+        return abs(self.overall_discrepancy) > 10
+
+    def get_status(self):
+        """Get the status based on discrepancy"""
+        if abs(self.overall_discrepancy) <= 10:
+            return "Balanced"
+        return "Discrepancy"
 class SalesDocument(db.Model):
     __tablename__ = 'sales_documents'  # Note the plural form
     id = db.Column(db.Integer, primary_key=True)

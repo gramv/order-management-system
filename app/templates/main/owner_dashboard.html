@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">Owner Dashboard</h1>
+        <div class="text-muted">{{ datetime.now().strftime('%B %d, %Y') }}</div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row g-4 mb-4">
+        <!-- Daily Sales Card -->
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Today's Sales</h6>
+                    <h2 class="card-title mb-0">
+                        ${{ "%.2f"|format(today_sales|sum(attribute='total_actual') if today_sales else 0) }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending Orders -->
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Pending Orders</h6>
+                    <h2 class="card-title mb-0">
+                        {{ pending_daily_orders + pending_monthly_orders }}
+                    </h2>
+                    <small class="text-muted">
+                        Daily: {{ pending_daily_orders }} / Monthly: {{ pending_monthly_orders }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Customer Orders -->
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Customer Orders</h6>
+                    <h2 class="card-title mb-0">{{ customer_orders }}</h2>
+                    <small class="text-muted">Pending orders</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Discrepancies -->
+        <div class="col-md-3">
+            <div class="card h-100 {% if recent_discrepancies %}border-warning{% endif %}">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Discrepancies</h6>
+                    <h2 class="card-title mb-0">{{ recent_discrepancies|length }}</h2>
+                    <small class="text-muted">Requiring attention</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Quick Actions</h5>
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('main.list_sales') }}" class="btn btn-primary">
+                            <i class="fas fa-chart-line me-2"></i>View Sales
+                        </a>
+                        <a href="{{ url_for('main.analytics') }}" class="btn btn-info">
+                            <i class="fas fa-chart-bar me-2"></i>Analytics
+                        </a>
+                        <a href="{{ url_for('main.products') }}" class="btn btn-success">
+                            <i class="fas fa-box me-2"></i>Products
+                        </a>
+                        <a href="{{ url_for('main.list_wholesalers') }}" class="btn btn-secondary">
+                            <i class="fas fa-truck me-2"></i>Wholesalers
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activities -->
+    <div class="row">
+        <!-- Recent Discrepancies -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Recent Discrepancies</h5>
+                    {% if recent_discrepancies %}
+                        <div class="list-group list-group-flush">
+                        {% for sale in recent_discrepancies %}
+                            <a href="{{ url_for('main.view_sales', sales_id=sale.id) }}" 
+                               class="list-group-item list-group-item-action">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-0">{{ sale.date.strftime('%Y-%m-%d') }}</h6>
+                                        <small class="text-muted">By {{ sale.employee.username }}</small>
+                                    </div>
+                                    <span class="text-danger">${{ "%.2f"|format(sale.overall_discrepancy) }}</span>
+                                </div>
+                            </a>
+                        {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No recent discrepancies found.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Customer Orders -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Recent Customer Orders</h5>
+                    {% if recent_customer_orders %}
+                        <div class="list-group list-group-flush">
+                        {% for order in recent_customer_orders %}
+                            <a href="{{ url_for('main.view_customer_order', order_id=order.id) }}" 
+                               class="list-group-item list-group-item-action">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-0">{{ order.customer_name }}</h6>
+                                        <small class="text-muted">
+                                            {{ order.order_date.strftime('%Y-%m-%d %H:%M') }}
+                                        </small>
+                                    </div>
+                                    <span class="badge bg-{{ 'success' if order.is_paid else 'warning' }}">
+                                        {{ 'Paid' if order.is_paid else 'Pending' }}
+                                    </span>
+                                </div>
+                            </a>
+                        {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No recent customer orders.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

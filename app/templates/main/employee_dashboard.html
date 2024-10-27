@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3">Welcome, {{ current_user.username }}</h1>
+            <p class="text-muted mb-0">{{ datetime.now().strftime('%B %d, %Y') }}</p>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Quick Actions</h5>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ url_for('main.record_daily_sales') }}" class="btn btn-primary">
+                        <i class="fas fa-cash-register me-2"></i>Record Sales
+                    </a>
+                    <a href="{{ url_for('main.create_order_list') }}" class="btn btn-success">
+                        <i class="fas fa-plus me-2"></i>Create Order
+                    </a>
+                    <a href="{{ url_for('main.customer_orders') }}" class="btn btn-info">
+                        <i class="fas fa-shopping-cart me-2"></i>Customer Orders
+                    </a>
+                    <a href="{{ url_for('main.products') }}" class="btn btn-secondary">
+                        <i class="fas fa-box me-2"></i>View Products
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    <div class="row">
+        <!-- Today's Orders -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-white">
+                    <h5 class="card-title mb-0">Today's Orders</h5>
+                </div>
+                <div class="card-body">
+                    {% if today_orders %}
+                        <div class="list-group list-group-flush">
+                        {% for order in today_orders %}
+                            <a href="{{ url_for('main.view_order', order_id=order.id) }}" 
+                               class="list-group-item list-group-item-action">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-0">{{ order.wholesaler.name }}</h6>
+                                        <small class="text-muted">{{ order.items|length }} items</small>
+                                    </div>
+                                    <span class="badge bg-{{ 'success' if order.status == 'finalized' else 'warning' }}">
+                                        {{ order.status|title }}
+                                    </span>
+                                </div>
+                            </a>
+                        {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No orders for today.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Customer Orders -->
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-white">
+                    <h5 class="card-title mb-0">Recent Customer Orders</h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_customer_orders %}
+                        <div class="list-group list-group-flush">
+                        {% for order in recent_customer_orders %}
+                            <a href="{{ url_for('main.view_customer_order', order_id=order.id) }}" 
+                               class="list-group-item list-group-item-action">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-0">{{ order.customer_name }}</h6>
+                                        <small class="text-muted">
+                                            {{ order.order_date.strftime('%Y-%m-%d %H:%M') }}
+                                        </small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="badge bg-{{ 'success' if order.status == 'complete' else 'warning' }}">
+                                            {{ order.status|title }}
+                                        </div>
+                                        {% if order.is_paid %}
+                                            <div class="badge bg-success">Paid</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </a>
+                        {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No recent customer orders.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tasks Section -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-white">
+                    <h5 class="card-title mb-0">Daily Tasks</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <!-- Record Daily Sales Task -->
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-0">Record Daily Sales</h6>
+                                    <small class="text-muted">End of shift task</small>
+                                </div>
+                                <a href="{{ url_for('main.record_daily_sales') }}" 
+                                   class="btn btn-sm btn-primary">Record</a>
+                            </div>
+                        </div>
+                        
+                        <!-- Check Daily Orders Task -->
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-0">Check Daily Orders</h6>
+                                    <small class="text-muted">Review and process daily orders</small>
+                                </div>
+                                <a href="{{ url_for('main.daily_orders') }}" 
+                                   class="btn btn-sm btn-info">View</a>
+                            </div>
+                        </div>
+                        
+                        <!-- Process Customer Orders Task -->
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-0">Customer Orders</h6>
+                                    <small class="text-muted">Process pending customer orders</small>
+                                </div>
+                                <a href="{{ url_for('main.customer_orders') }}" 
+                                   class="btn btn-sm btn-success">Process</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
