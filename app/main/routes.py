@@ -35,6 +35,30 @@ from app.main import bp
 from app.models import DailySales, OrderList, CustomerOrder, Product, Wholesaler
 from sqlalchemy import desc
 from datetime import datetime, date
+from datetime import datetime, timedelta, date
+from flask import render_template, flash, redirect, url_for, request, jsonify, current_app
+from flask_login import login_required, current_user
+from sqlalchemy import func, desc, and_, distinct
+from sqlalchemy.orm import joinedload
+from app import db
+from app.main import bp
+from app.models import (
+    User, Product, Wholesaler, OrderList, OrderListItem, 
+    CustomerOrder, CustomerOrderItem, DailySales, SalesDocument
+)
+from app.utils.storage import CloudinaryStorage
+from app.utils.analytics import (
+    calculate_sales_metrics,
+    analyze_sales_patterns,
+    calculate_order_metrics,
+    analyze_top_products,
+    analyze_wholesaler_performance,
+    get_sales_trend_data,
+    get_order_trend_data
+)
+# In app/main/routes.py
+
+# app/main/routes.py
 
 @bp.route('/')
 @bp.route('/index')
@@ -43,54 +67,83 @@ def index():
     today = date.today()
     
     if current_user.role == 'owner':
-        # Get data for owner dashboard
-        today_sales = DailySales.query.filter_by(date=today).all()
-        pending_daily_orders = OrderList.query.filter_by(type='daily', status='pending').count()
-        pending_monthly_orders = OrderList.query.filter_by(type='monthly', status='pending').count()
-        customer_orders = CustomerOrder.query.filter_by(status='pending').count()
-        
-        # Recent sales with discrepancies
-        recent_discrepancies = DailySales.query\
-            .filter(DailySales.overall_discrepancy < -10)\
-            .order_by(desc(DailySales.date))\
-            .limit(5)\
-            .all()
-        
-        # Recent orders
-        recent_customer_orders = CustomerOrder.query\
-            .order_by(desc(CustomerOrder.order_date))\
-            .limit(5)\
-            .all()
-
-        return render_template('main/owner_dashboard.html',
-                           datetime=datetime,  # Pass datetime module
-                           today_sales=today_sales,
-                           pending_daily_orders=pending_daily_orders,
-                           pending_monthly_orders=pending_monthly_orders,
-                           customer_orders=customer_orders,
-                           recent_discrepancies=recent_discrepancies,
-                           recent_customer_orders=recent_customer_orders)
-    
-    else:
-        # Get data for employee dashboard
-        today_orders = OrderList.query\
-            .filter_by(date=today, type='daily')\
-            .order_by(desc(OrderList.id))\
-            .limit(5)\
-            .all()
+        try:
+            # Today's sales total
+            today_sales = DailySales.query.filter_by(date=today).all()
+            total_sales = sum(sale.total_actual for sale in today_sales) if today_sales else 0
             
-        recent_customer_orders = CustomerOrder.query\
-            .order_by(desc(CustomerOrder.order_date))\
-            .limit(5)\
-            .all()
-
-        return render_template('main/employee_dashboard.html',
-                           datetime=datetime,  # Pass datetime module here too
-                           today_orders=today_orders,
-                           recent_customer_orders=recent_customer_orders)
-
-
-
+            # Fetch pending orders counts
+            daily_orders = OrderList.query.filter_by(type='daily', status='pending').count()
+            monthly_orders = OrderList.query.filter_by(type='monthly', status='pending').count()
+            pending_orders = f"{daily_orders} / {monthly_orders}"
+            
+            # Fetch pending customer orders
+            customer_orders = CustomerOrder.query.filter_by(status='pending').count()
+            
+            # Fetch recent discrepancies (last 5 with significant discrepancies)
+            recent_discrepancies = DailySales.query\
+                .filter(
+                    DailySales.date == today,  # Only today's discrepancies
+                    DailySales.overall_discrepancy.notin_([-10, 10])
+                )\
+                .order_by(desc(DailySales.report_time))\
+                .limit(5)\
+                .all()
+            
+            # Fetch recent customer orders
+            recent_customer_orders = CustomerOrder.query\
+                .order_by(desc(CustomerOrder.order_date))\
+                .limit(5)\
+                .all()
+            
+            return render_template('main/owner_dashboard.html',
+                                 datetime=datetime,
+                                 total_sales=total_sales,
+                                 pending_orders=pending_orders,
+                                 customer_orders=customer_orders,
+                                 recent_discrepancies=recent_discrepancies,
+                                 recent_customer_orders=recent_customer_orders)
+        
+        except Exception as e:
+            current_app.logger.error(f"Error in owner dashboard: {str(e)}")
+            flash('An error occurred while loading the dashboard.', 'error')
+            return render_template('main/owner_dashboard.html',
+                                 datetime=datetime,
+                                 total_sales=0,
+                                 pending_orders="0 / 0",
+                                 customer_orders=0,
+                                 recent_discrepancies=[],
+                                 recent_customer_orders=[])
+    
+    else:  # Employee dashboard
+        try:
+            # Fetch today's orders
+            today_orders = OrderList.query\
+                .filter_by(date=today, type='daily')\
+                .order_by(desc(OrderList.id))\
+                .options(joinedload(OrderList.wholesaler))\
+                .limit(5)\
+                .all()
+            
+            # Fetch recent customer orders
+            recent_customer_orders = CustomerOrder.query\
+                .order_by(desc(CustomerOrder.order_date))\
+                .limit(5)\
+                .all()
+            
+            return render_template('main/employee_dashboard.html',
+                                 datetime=datetime,
+                                 today_orders=today_orders,
+                                 recent_customer_orders=recent_customer_orders)
+        
+        except Exception as e:
+            current_app.logger.error(f"Error in employee dashboard: {str(e)}")
+            flash('An error occurred while loading the dashboard.', 'error')
+            return render_template('main/employee_dashboard.html',
+                                 datetime=datetime,
+                                 today_orders=[],
+                                 recent_customer_orders=[])
+        
 @bp.route('/daily_orders')
 @login_required
 def daily_orders():
@@ -672,83 +725,189 @@ def delete_order_item(item_id):
     flash('Order item deleted successfully.', 'success')
     return redirect(url_for('main.view_order', order_id=order_id))
 
-
-
-from datetime import datetime, timedelta
-
-@bp.route('/analytics')
-@login_required
-def analytics():
-    end_date = datetime.now().date()
-    start_date = end_date - timedelta(days=30)  # Default to last 30 days
-    
-    # Get date range from request args if provided
-    if request.args.get('start_date') and request.args.get('end_date'):
-        start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
-        end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
-
-    total_sales = get_total_sales(start_date, end_date)
-    top_products = get_top_products(start_date, end_date)
-    sales_by_wholesaler = get_sales_by_wholesaler(start_date, end_date)
-    order_frequency = get_order_frequency(start_date, end_date)
-    avg_order_value = get_avg_order_value(start_date, end_date)
-
-    # Format order_frequency dates
-    order_frequency_formatted = [(date.strftime('%Y-%m-%d'), count) for date, count in order_frequency]
-
-    return render_template('analytics.html',
-                           total_sales=total_sales,
-                           top_products=top_products,
-                           sales_by_wholesaler=sales_by_wholesaler,
-                           order_frequency=order_frequency_formatted,
-                           avg_order_value=avg_order_value,
-                           start_date=start_date,
-                           end_date=end_date)
-def get_sales_by_wholesaler(start_date, end_date):
-    return db.session.query(
-        Wholesaler.name, 
-        func.sum(OrderListItem.quantity * Product.price).label('total_sales')
-    ).\
-    join(Product, Wholesaler.id == Product.wholesaler_id).\
-    join(OrderListItem, Product.id == OrderListItem.product_id).\
-    join(OrderList, OrderList.id == OrderListItem.order_list_id).\
-    filter(OrderList.date.between(start_date, end_date)).\
-    group_by(Wholesaler.id).\
-    all()
-
-def get_total_sales(start_date, end_date):
-    return db.session.query(func.sum(OrderListItem.quantity * Product.price)).\
-        join(Product, OrderListItem.product_id == Product.id).\
-        join(OrderList, OrderList.id == OrderListItem.order_list_id).\
-        filter(OrderList.date.between(start_date, end_date)).\
-        scalar() or 0
-
-def get_top_products(start_date, end_date, limit=5):
-    return db.session.query(Product.name, func.sum(OrderListItem.quantity).label('total_quantity')).\
-        join(OrderListItem, Product.id == OrderListItem.product_id).\
-        join(OrderList, OrderList.id == OrderListItem.order_list_id).\
-        filter(OrderList.date.between(start_date, end_date)).\
-        group_by(Product.id).\
-        order_by(func.sum(OrderListItem.quantity).desc()).\
-        limit(limit).all()
-
-def get_order_frequency(start_date, end_date):
-    return db.session.query(OrderList.date, func.count(OrderList.id).label('order_count')).\
-        filter(OrderList.date.between(start_date, end_date)).\
-        group_by(OrderList.date).all()
-
-def get_avg_order_value(start_date, end_date):
-    return db.session.query(func.avg(
-        db.session.query(func.sum(OrderListItem.quantity * Product.price)).\
-        join(Product, OrderListItem.product_id == Product.id).\
-        filter(OrderListItem.order_list_id == OrderList.id).\
-        as_scalar()
-    )).\
-    filter(OrderList.date.between(start_date, end_date)).\
-    scalar() or 0
-
 # In app/main/routes.py
+# app/main/routes.py
 
+
+# app/main/routes.py
+
+from datetime import datetime, timedelta, date
+from flask import render_template, flash, redirect, url_for, request, jsonify, current_app
+from flask_login import login_required, current_user
+from sqlalchemy import func, desc
+from sqlalchemy.orm import joinedload  # Add this import
+from app import db
+from app.main import bp
+from app.models import (
+    User, Product, Wholesaler, OrderList, OrderListItem, 
+    CustomerOrder, CustomerOrderItem, DailySales
+)
+
+# We'll simplify the analytics to show:
+# 1. Last 7 days by default
+# 2. Summarized data that's more meaningful
+# 3. Better organized charts
+
+@bp.route('/analytics/sales')
+@login_required
+def sales_analytics():
+    if not current_user.role == 'owner':
+        flash('Access denied.', 'error')
+        return redirect(url_for('main.index'))
+
+    try:
+        # Default to last 7 days
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=7)
+
+        # Override if dates provided
+        if request.args.get('start_date'):
+            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
+        if request.args.get('end_date'):
+            end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
+
+        # Get daily sales data
+        daily_sales = db.session.query(
+            DailySales.date,
+            func.sum(DailySales.total_actual).label('total_sales'),
+            func.sum(DailySales.front_register_cash + DailySales.back_register_cash).label('cash_total'),
+            func.sum(DailySales.credit_card_total).label('card_total'),
+            func.sum(DailySales.otc1_total + DailySales.otc2_total).label('otc_total'),
+            func.sum(DailySales.overall_discrepancy).label('total_discrepancy'),
+            func.count(DailySales.id).label('transaction_count')
+        ).filter(
+            DailySales.date.between(start_date, end_date)
+        ).group_by(
+            DailySales.date
+        ).order_by(
+            DailySales.date
+        ).all()
+
+        # Summarize the data
+        summary = {
+            'total_sales': sum(day.total_sales for day in daily_sales) if daily_sales else 0,
+            'total_discrepancy': sum(day.total_discrepancy for day in daily_sales) if daily_sales else 0,
+            'transaction_count': sum(day.transaction_count for day in daily_sales) if daily_sales else 0,
+            'payment_methods': {
+                'cash': sum(day.cash_total for day in daily_sales) if daily_sales else 0,
+                'card': sum(day.card_total for day in daily_sales) if daily_sales else 0,
+                'otc': sum(day.otc_total for day in daily_sales) if daily_sales else 0
+            }
+        }
+
+        # Calculate averages
+        summary['avg_daily_sales'] = summary['total_sales'] / len(daily_sales) if daily_sales else 0
+        summary['avg_transaction'] = summary['total_sales'] / summary['transaction_count'] if summary['transaction_count'] > 0 else 0
+
+        # Format chart data
+        chart_data = {
+            'dates': [day.date.strftime('%Y-%m-%d') for day in daily_sales],
+            'sales': [float(day.total_sales) for day in daily_sales],
+            'transactions': [int(day.transaction_count) for day in daily_sales]
+        }
+
+        return render_template(
+            'analytics/sales_analytics.html',
+            summary=summary,
+            chart_data=chart_data,
+            start_date=start_date.strftime('%Y-%m-%d'),
+            end_date=end_date.strftime('%Y-%m-%d')
+        )
+
+    except Exception as e:
+        current_app.logger.error(f"Error in sales analytics: {str(e)}")
+        flash('An error occurred while loading analytics.', 'error')
+        return redirect(url_for('main.index'))
+
+@bp.route('/analytics/orders')
+@login_required
+def order_analytics():
+    if not current_user.role == 'owner':
+        flash('Access denied.', 'error')
+        return redirect(url_for('main.index'))
+
+    try:
+        # Default to last 7 days
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=7)
+
+        # Override if dates provided
+        if request.args.get('start_date'):
+            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
+        if request.args.get('end_date'):
+            end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
+
+        # Get order summary by date
+        daily_orders = db.session.query(
+            OrderList.date,
+            func.count(OrderList.id).label('order_count'),
+            func.sum(OrderListItem.quantity * Product.price).label('total_value')
+        ).join(
+            OrderListItem, OrderList.id == OrderListItem.order_list_id
+        ).join(
+            Product, OrderListItem.product_id == Product.id
+        ).filter(
+            OrderList.date.between(start_date, end_date)
+        ).group_by(
+            OrderList.date
+        ).order_by(
+            OrderList.date
+        ).all()
+
+        # Get top products
+        top_products = db.session.query(
+            Product.name,
+            func.sum(OrderListItem.quantity).label('quantity'),
+            func.sum(OrderListItem.quantity * Product.price).label('value')
+        ).join(
+            OrderListItem, Product.id == OrderListItem.product_id
+        ).join(
+            OrderList, OrderListItem.order_list_id == OrderList.id
+        ).filter(
+            OrderList.date.between(start_date, end_date)
+        ).group_by(
+            Product.id, Product.name
+        ).order_by(
+            func.sum(OrderListItem.quantity * Product.price).desc()
+        ).limit(5).all()
+
+        # Summarize the data
+        summary = {
+            'total_orders': sum(day.order_count for day in daily_orders) if daily_orders else 0,
+            'total_value': sum(day.total_value for day in daily_orders) if daily_orders else 0,
+            'avg_order_value': (
+                sum(day.total_value for day in daily_orders) / 
+                sum(day.order_count for day in daily_orders)
+            ) if daily_orders and sum(day.order_count for day in daily_orders) > 0 else 0
+        }
+
+        # Format chart data
+        chart_data = {
+            'dates': [day.date.strftime('%Y-%m-%d') for day in daily_orders],
+            'values': [float(day.total_value) for day in daily_orders],
+            'counts': [int(day.order_count) for day in daily_orders]
+        }
+
+        # Format product data
+        product_data = [{
+            'name': p.name,
+            'quantity': int(p.quantity),
+            'value': float(p.value)
+        } for p in top_products]
+
+        return render_template(
+            'analytics/order_analytics.html',
+            summary=summary,
+            chart_data=chart_data,
+            products=product_data,
+            start_date=start_date.strftime('%Y-%m-%d'),
+            end_date=end_date.strftime('%Y-%m-%d')
+        )
+
+    except Exception as e:
+        current_app.logger.error(f"Error in order analytics: {str(e)}")
+        flash('An error occurred while loading analytics.', 'error')
+        return redirect(url_for('main.index'))
 
 @bp.route('/customer_orders')
 @login_required

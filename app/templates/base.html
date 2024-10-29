@@ -253,9 +253,17 @@
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{{ url_for('main.list_wholesalers') }}">Wholesalers</a></li>
-                            {% if current_user.role == 'owner' %}
-                                <li><a class="dropdown-item" href="{{ url_for('main.analytics') }}">Analytics</a></li>
-                            {% endif %}
+                        </ul>
+                    </li>
+
+                    <!-- New Analytics Dropdown -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="fas fa-chart-line me-1"></i>Analytics
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('main.sales_analytics') }}">Sales Analytics</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('main.order_analytics') }}">Order Analytics</a></li>
                         </ul>
                     </li>
                 </ul>
