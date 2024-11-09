@@ -24,9 +24,9 @@
                     <button type="submit" class="btn btn-primary">Apply</button>
                 </div>
                 <div class="col-auto">
-                    <button type="button" class="btn btn-outline-secondary" data-period="today">Today</button>
-                    <button type="button" class="btn btn-outline-secondary" data-period="week">This Week</button>
-                    <button type="button" class="btn btn-outline-secondary" data-period="month">This Month</button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="setPeriod('today')">Today</button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="setPeriod('week')">This Week</button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="setPeriod('month')">This Month</button>
                 </div>
             </form>
         </div>
@@ -34,37 +34,15 @@
 
     <!-- Summary Cards Row -->
     <div class="row g-4 mb-4">
-        <!-- Total Sales Card -->
+        <!-- Total Orders Value -->
         <div class="col-xl-3 col-md-6">
             <div class="card bg-primary text-white h-100">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <div class="text-white-75 small">Total Sales</div>
-                            <div class="h3 mb-0">${{ "%.2f"|format(summary.total_sales) }}</div>
-                            <div class="small mt-2">
-                                Avg: ${{ "%.2f"|format(summary.avg_daily_sales) }}/day
-                            </div>
-                        </div>
-                        <div class="text-white-50">
-                            <i class="fas fa-dollar-sign fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Transaction Count -->
-        <div class="col-xl-3 col-md-6">
-            <div class="card bg-success text-white h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <div class="text-white-75 small">Transactions</div>
-                            <div class="h3 mb-0">{{ summary.transaction_count }}</div>
-                            <div class="small mt-2">
-                                Avg: ${{ "%.2f"|format(summary.total_sales / summary.transaction_count if summary.transaction_count else 0) }}/transaction
-                            </div>
+                            <div class="text-white-75 small">Total Orders Value</div>
+                            <div class="h3 mb-0">${{ "%.2f"|format(summary.total_value) }}</div>
+                            <div class="small mt-2">{{ summary.total_orders }} orders</div>
                         </div>
                         <div class="text-white-50">
                             <i class="fas fa-shopping-cart fa-2x"></i>
@@ -74,39 +52,54 @@
             </div>
         </div>
 
-        <!-- Payment Methods -->
+        <!-- Average Order Value -->
         <div class="col-xl-3 col-md-6">
-            <div class="card bg-info text-white h-100">
+            <div class="card bg-success text-white h-100">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <div class="text-white-75 small">Payment Methods</div>
-                            <div class="small mt-2">
-                                Cash: ${{ "%.2f"|format(summary.payment_methods.cash) }}<br>
-                                Card: ${{ "%.2f"|format(summary.payment_methods.card) }}<br>
-                                OTC: ${{ "%.2f"|format(summary.payment_methods.otc) }}
-                            </div>
+                            <div class="text-white-75 small">Average Order Value</div>
+                            <div class="h3 mb-0">${{ "%.2f"|format(summary.avg_order_value) }}</div>
+                            <div class="small mt-2">per order</div>
                         </div>
                         <div class="text-white-50">
-                            <i class="fas fa-credit-card fa-2x"></i>
+                            <i class="fas fa-chart-line fa-2x"></i>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Discrepancies -->
+        <!-- Expected Profit -->
         <div class="col-xl-3 col-md-6">
-            <div class="card {{ 'bg-danger' if summary.total_discrepancy < -10 else 'bg-success' }} text-white h-100">
+            <div class="card bg-info text-white h-100">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <div class="text-white-75 small">Net Discrepancy</div>
-                            <div class="h3 mb-0">${{ "%.2f"|format(summary.total_discrepancy) }}</div>
-                            <div class="small mt-2">{{ "%.1f"|format(summary.total_discrepancy / summary.total_sales * 100 if summary.total_sales else 0) }}% of sales</div>
+                            <div class="text-white-75 small">Expected Profit</div>
+                            <div class="h3 mb-0">${{ "%.2f"|format(summary.total_value * 0.4) }}</div>
+                            <div class="small mt-2">40% margin</div>
                         </div>
                         <div class="text-white-50">
-                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                            <i class="fas fa-dollar-sign fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending Orders -->
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-warning text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="text-white-75 small">Pending Orders</div>
+                            <div class="h3 mb-0">{{ summary.pending_orders }}</div>
+                            <div class="small mt-2">need attention</div>
+                        </div>
+                        <div class="text-white-50">
+                            <i class="fas fa-clock fa-2x"></i>
                         </div>
                     </div>
                 </div>
@@ -114,13 +107,13 @@
         </div>
     </div>
 
-    <!-- Charts Row -->
+    <!-- Charts and Tables Row -->
     <div class="row g-4 mb-4">
-        <!-- Day of Week Analysis -->
-        <div class="col-xl-6">
+        <!-- Day of Week Chart -->
+        <div class="col-xl-8">
             <div class="card h-100">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0">Sales by Day of Week</h5>
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Orders by Day of Week</h5>
                 </div>
                 <div class="card-body">
                     <canvas id="weekdayChart" height="300"></canvas>
@@ -128,14 +121,35 @@
             </div>
         </div>
 
-        <!-- Monthly Analysis -->
-        <div class="col-xl-6">
+        <!-- Top Products Table -->
+        <div class="col-xl-4">
             <div class="card h-100">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0">Monthly Pattern</h5>
+                    <h5 class="card-title mb-0">Top Products</h5>
                 </div>
                 <div class="card-body">
-                    <canvas id="monthlyChart" height="300"></canvas>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th class="text-end">Quantity</th>
+                                    <th class="text-end">Value</th>
+                                    <th class="text-end">Profit</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for product in products %}
+                                <tr>
+                                    <td>{{ product.name }}</td>
+                                    <td class="text-end">{{ product.quantity }}</td>
+                                    <td class="text-end">${{ "%.2f"|format(product.value) }}</td>
+                                    <td class="text-end">${{ "%.2f"|format(product.profit) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -146,30 +160,22 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize charts
-    initializeCharts();
-    
-    // Setup event listeners
-    setupEventListeners();
-});
-
-function initializeCharts() {
-    // Weekday Chart
+    // Initialize Weekday Chart
     const weekdayCtx = document.getElementById('weekdayChart').getContext('2d');
     new Chart(weekdayCtx, {
         type: 'bar',
         data: {
-            labels: {{ weekday_data.labels|tojson }},
+            labels: {{ chart_data.labels|tojson }},
             datasets: [{
-                label: 'Sales',
-                data: {{ weekday_data.sales|tojson }},
+                label: 'Order Value',
+                data: {{ chart_data.values|tojson }},
                 backgroundColor: 'rgba(75, 192, 192, 0.5)',
                 borderColor: 'rgb(75, 192, 192)',
                 borderWidth: 1,
                 yAxisID: 'y'
             }, {
-                label: 'Transactions',
-                data: {{ weekday_data.transactions|tojson }},
+                label: 'Order Count',
+                data: {{ chart_data.orders|tojson }},
                 type: 'line',
                 borderColor: 'rgb(54, 162, 235)',
                 yAxisID: 'y1'
@@ -188,7 +194,7 @@ function initializeCharts() {
                     position: 'left',
                     title: {
                         display: true,
-                        text: 'Sales ($)'
+                        text: 'Order Value ($)'
                     },
                     ticks: {
                         callback: function(value) {
@@ -202,7 +208,7 @@ function initializeCharts() {
                     position: 'right',
                     title: {
                         display: true,
-                        text: 'Transactions'
+                        text: 'Order Count'
                     },
                     grid: {
                         drawOnChartArea: false
@@ -211,58 +217,7 @@ function initializeCharts() {
             }
         }
     });
-
-    // Monthly Chart
-    const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
-    new Chart(monthlyCtx, {
-        type: 'bar',
-        data: {
-            labels: {{ monthly_data.labels|tojson }},
-            datasets: [{
-                label: 'Total Sales',
-                data: {{ monthly_data.sales|tojson }},
-                backgroundColor: 'rgba(75, 192, 192, 0.5)',
-                borderColor: 'rgb(75, 192, 192)',
-                borderWidth: 1,
-                yAxisID: 'y'
-            }, {
-                label: 'Average Daily Sales',
-                data: {{ monthly_data.avg_sales|tojson }},
-                type: 'line',
-                borderColor: 'rgb(255, 99, 132)',
-                yAxisID: 'y'
-            }]
-        },
-        options: {
-            responsive: true,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return '$' + value.toLocaleString();
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-function setupEventListeners() {
-    // Date range buttons
-    document.querySelectorAll('[data-period]').forEach(button => {
-        button.addEventListener('click', function() {
-            const period = this.dataset.period;
-            setPeriod(period);
-            document.querySelector('form').submit();
-        });
-    });
-}
+});
 
 function setPeriod(period) {
     const today = new Date();
@@ -282,6 +237,7 @@ function setPeriod(period) {
     
     document.getElementById('start_date').value = startDate.toISOString().split('T')[0];
     document.getElementById('end_date').value = today.toISOString().split('T')[0];
+    document.querySelector('form').submit();
 }
 </script>
 {% endblock %}

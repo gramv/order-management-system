@@ -731,23 +731,6 @@ def delete_order_item(item_id):
 
 # app/main/routes.py
 
-from datetime import datetime, timedelta, date
-from flask import render_template, flash, redirect, url_for, request, jsonify, current_app
-from flask_login import login_required, current_user
-from sqlalchemy import func, desc
-from sqlalchemy.orm import joinedload  # Add this import
-from app import db
-from app.main import bp
-from app.models import (
-    User, Product, Wholesaler, OrderList, OrderListItem, 
-    CustomerOrder, CustomerOrderItem, DailySales
-)
-
-# We'll simplify the analytics to show:
-# 1. Last 7 days by default
-# 2. Summarized data that's more meaningful
-# 3. Better organized charts
-
 @bp.route('/analytics/sales')
 @login_required
 def sales_analytics():
@@ -756,60 +739,98 @@ def sales_analytics():
         return redirect(url_for('main.index'))
 
     try:
-        # Default to last 7 days
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=7)
+        # Default date range (current month)
+        today = datetime.now().date()
+        start_date = today.replace(day=1)  # First day of current month
+        end_date = today
 
-        # Override if dates provided
-        if request.args.get('start_date'):
-            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
         if request.args.get('end_date'):
             end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
+        if request.args.get('start_date'):
+            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
 
-        # Get daily sales data
-        daily_sales = db.session.query(
-            DailySales.date,
+        # Get overall summary
+        summary = db.session.query(
             func.sum(DailySales.total_actual).label('total_sales'),
-            func.sum(DailySales.front_register_cash + DailySales.back_register_cash).label('cash_total'),
-            func.sum(DailySales.credit_card_total).label('card_total'),
-            func.sum(DailySales.otc1_total + DailySales.otc2_total).label('otc_total'),
+            func.avg(DailySales.total_actual).label('avg_daily_sales'),
+            func.count(DailySales.id).label('transaction_count'),
             func.sum(DailySales.overall_discrepancy).label('total_discrepancy'),
+            func.sum(DailySales.front_register_cash + DailySales.back_register_cash).label('total_cash'),
+            func.sum(DailySales.credit_card_total).label('total_card'),
+            func.sum(DailySales.otc1_total + DailySales.otc2_total).label('total_otc')
+        ).filter(
+            DailySales.date.between(start_date, end_date)
+        ).first()
+
+        # Day of week analysis
+        day_of_week = db.session.query(
+            func.extract('dow', DailySales.date).label('day_of_week'),
+            func.sum(DailySales.total_actual).label('total_sales'),
             func.count(DailySales.id).label('transaction_count')
         ).filter(
             DailySales.date.between(start_date, end_date)
         ).group_by(
-            DailySales.date
+            func.extract('dow', DailySales.date)
         ).order_by(
-            DailySales.date
+            'day_of_week'
         ).all()
 
-        # Summarize the data
-        summary = {
-            'total_sales': sum(day.total_sales for day in daily_sales) if daily_sales else 0,
-            'total_discrepancy': sum(day.total_discrepancy for day in daily_sales) if daily_sales else 0,
-            'transaction_count': sum(day.transaction_count for day in daily_sales) if daily_sales else 0,
-            'payment_methods': {
-                'cash': sum(day.cash_total for day in daily_sales) if daily_sales else 0,
-                'card': sum(day.card_total for day in daily_sales) if daily_sales else 0,
-                'otc': sum(day.otc_total for day in daily_sales) if daily_sales else 0
-            }
+        # Monthly analysis
+        monthly = db.session.query(
+            func.extract('month', DailySales.date).label('month'),
+            func.sum(DailySales.total_actual).label('total_sales'),
+            func.avg(DailySales.total_actual).label('avg_daily_sales'),
+            func.count(DailySales.id).label('transaction_count')
+        ).group_by(
+            func.extract('month', DailySales.date)
+        ).order_by(
+            'month'
+        ).all()
+
+        # Format data for charts
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                 'July', 'August', 'September', 'October', 'November', 'December']
+
+        weekday_data = {
+            'labels': days,
+            'sales': [0] * 7,
+            'transactions': [0] * 7
         }
 
-        # Calculate averages
-        summary['avg_daily_sales'] = summary['total_sales'] / len(daily_sales) if daily_sales else 0
-        summary['avg_transaction'] = summary['total_sales'] / summary['transaction_count'] if summary['transaction_count'] > 0 else 0
+        for day in day_of_week:
+            idx = int(day.day_of_week)
+            weekday_data['sales'][idx] = float(day.total_sales)
+            weekday_data['transactions'][idx] = int(day.transaction_count)
 
-        # Format chart data
-        chart_data = {
-            'dates': [day.date.strftime('%Y-%m-%d') for day in daily_sales],
-            'sales': [float(day.total_sales) for day in daily_sales],
-            'transactions': [int(day.transaction_count) for day in daily_sales]
+        monthly_data = {
+            'labels': months,
+            'sales': [0] * 12,
+            'avg_sales': [0] * 12,
+            'transactions': [0] * 12
         }
+
+        for month in monthly:
+            idx = int(month.month) - 1  # Convert 1-based month to 0-based index
+            monthly_data['sales'][idx] = float(month.total_sales)
+            monthly_data['avg_sales'][idx] = float(month.avg_daily_sales)
+            monthly_data['transactions'][idx] = int(month.transaction_count)
 
         return render_template(
             'analytics/sales_analytics.html',
-            summary=summary,
-            chart_data=chart_data,
+            summary={
+                'total_sales': float(summary.total_sales) if summary.total_sales else 0,
+                'avg_daily_sales': float(summary.avg_daily_sales) if summary.avg_daily_sales else 0,
+                'transaction_count': int(summary.transaction_count) if summary.transaction_count else 0,
+                'total_discrepancy': float(summary.total_discrepancy) if summary.total_discrepancy else 0,
+                'payment_methods': {
+                    'cash': float(summary.total_cash) if summary.total_cash else 0,
+                    'card': float(summary.total_card) if summary.total_card else 0,
+                    'otc': float(summary.total_otc) if summary.total_otc else 0
+                }
+            },
+            weekday_data=weekday_data,
+            monthly_data=monthly_data,
             start_date=start_date.strftime('%Y-%m-%d'),
             end_date=end_date.strftime('%Y-%m-%d')
         )
@@ -819,6 +840,20 @@ def sales_analytics():
         flash('An error occurred while loading analytics.', 'error')
         return redirect(url_for('main.index'))
 
+# Add this to the imports at the top of routes.py
+from datetime import datetime, timedelta, date
+from flask import render_template, flash, redirect, url_for, request, jsonify, current_app
+from flask_login import login_required, current_user
+from sqlalchemy import func, desc, case, extract
+from sqlalchemy.orm import joinedload
+from app import db
+from app.main import bp
+from app.models import (
+    User, Product, Wholesaler, OrderList, OrderListItem, 
+    CustomerOrder, CustomerOrderItem, DailySales
+)
+# app/main/routes.py
+
 @bp.route('/analytics/orders')
 @login_required
 def order_analytics():
@@ -827,79 +862,90 @@ def order_analytics():
         return redirect(url_for('main.index'))
 
     try:
-        # Default to last 7 days
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=7)
+        today = datetime.now().date()
+        start_date = today.replace(day=1)
+        end_date = today
 
-        # Override if dates provided
-        if request.args.get('start_date'):
-            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
         if request.args.get('end_date'):
             end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
+        if request.args.get('start_date'):
+            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
 
-        # Get order summary by date
-        daily_orders = db.session.query(
-            OrderList.date,
-            func.count(OrderList.id).label('order_count'),
-            func.sum(OrderListItem.quantity * Product.price).label('total_value')
-        ).join(
-            OrderListItem, OrderList.id == OrderListItem.order_list_id
-        ).join(
-            Product, OrderListItem.product_id == Product.id
-        ).filter(
+        # Get all orders for the period
+        orders = db.session.query(OrderList).filter(
             OrderList.date.between(start_date, end_date)
-        ).group_by(
-            OrderList.date
-        ).order_by(
-            OrderList.date
+        ).options(
+            joinedload(OrderList.items).joinedload(OrderListItem.product)
         ).all()
 
-        # Get top products
-        top_products = db.session.query(
-            Product.name,
-            func.sum(OrderListItem.quantity).label('quantity'),
-            func.sum(OrderListItem.quantity * Product.price).label('value')
-        ).join(
-            OrderListItem, Product.id == OrderListItem.product_id
-        ).join(
-            OrderList, OrderListItem.order_list_id == OrderList.id
-        ).filter(
-            OrderList.date.between(start_date, end_date)
-        ).group_by(
-            Product.id, Product.name
-        ).order_by(
-            func.sum(OrderListItem.quantity * Product.price).desc()
-        ).limit(5).all()
+        # Calculate basic metrics
+        total_orders = len(orders)
+        total_value = sum(
+            item.quantity * item.product.price
+            for order in orders
+            for item in order.items
+        )
+        pending_orders = sum(1 for order in orders if order.status == 'pending')
 
-        # Summarize the data
+        # Prepare summary
         summary = {
-            'total_orders': sum(day.order_count for day in daily_orders) if daily_orders else 0,
-            'total_value': sum(day.total_value for day in daily_orders) if daily_orders else 0,
-            'avg_order_value': (
-                sum(day.total_value for day in daily_orders) / 
-                sum(day.order_count for day in daily_orders)
-            ) if daily_orders and sum(day.order_count for day in daily_orders) > 0 else 0
+            'total_orders': total_orders,
+            'total_value': total_value,
+            'pending_orders': pending_orders,
+            'avg_order_value': total_value / total_orders if total_orders > 0 else 0
         }
 
-        # Format chart data
+        # Initialize weekday counters
+        weekday_values = [0] * 7
+        weekday_counts = [0] * 7
+
+        # Calculate weekday statistics
+        for order in orders:
+            weekday = order.date.weekday()
+            order_value = sum(item.quantity * item.product.price for item in order.items)
+            weekday_values[weekday] += order_value
+            weekday_counts[weekday] += 1
+
+        # Prepare chart data
         chart_data = {
-            'dates': [day.date.strftime('%Y-%m-%d') for day in daily_orders],
-            'values': [float(day.total_value) for day in daily_orders],
-            'counts': [int(day.order_count) for day in daily_orders]
+            'labels': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+            'values': weekday_values,
+            'orders': weekday_counts
         }
 
-        # Format product data
-        product_data = [{
-            'name': p.name,
-            'quantity': int(p.quantity),
-            'value': float(p.value)
+        # Calculate top products
+        product_totals = {}
+        for order in orders:
+            for item in order.items:
+                if item.product_id not in product_totals:
+                    product_totals[item.product_id] = {
+                        'name': item.product.name,
+                        'quantity': 0,
+                        'value': 0
+                    }
+                product_totals[item.product_id]['quantity'] += item.quantity
+                product_totals[item.product_id]['value'] += item.quantity * item.product.price
+
+        # Sort and format top products
+        top_products = sorted(
+            product_totals.values(),
+            key=lambda x: x['value'],
+            reverse=True
+        )[:5]
+
+        # Add profit calculation
+        products = [{
+            'name': p['name'],
+            'quantity': p['quantity'],
+            'value': p['value'],
+            'profit': p['value'] * 0.4
         } for p in top_products]
 
         return render_template(
             'analytics/order_analytics.html',
             summary=summary,
             chart_data=chart_data,
-            products=product_data,
+            products=products,
             start_date=start_date.strftime('%Y-%m-%d'),
             end_date=end_date.strftime('%Y-%m-%d')
         )
@@ -908,7 +954,6 @@ def order_analytics():
         current_app.logger.error(f"Error in order analytics: {str(e)}")
         flash('An error occurred while loading analytics.', 'error')
         return redirect(url_for('main.index'))
-
 @bp.route('/customer_orders')
 @login_required
 def customer_orders():
